@@ -1,0 +1,123 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: 48px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brandIcon {
+  font-size: 18px;
+  color: var(--accent);
+  line-height: 1;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.brandName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-bright);
+  flex-shrink: 0;
+  margin: 0 var(--space-1);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* ─── Button base ─── */
+.btnPrimary,
+.btnToggle,
+.btnDanger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    box-shadow var(--transition-fast), opacity var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btnPrimary svg,
+.btnToggle svg,
+.btnDanger svg {
+  flex-shrink: 0;
+}
+
+/* Primary */
+.btnPrimary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.btnPrimary:hover {
+  background: var(--accent-bright);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.btnPrimary:active {
+  transform: scale(0.97);
+}
+
+/* Toggle */
+.btnToggle {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btnToggle:hover:not(:disabled) {
+  background: var(--bg-panel-hover);
+  color: var(--text-primary);
+  border-color: var(--border-bright);
+}
+
+.btnToggle.active {
+  background: var(--accent-dim);
+  color: var(--text-accent);
+  border-color: var(--accent);
+}
+
+.btnToggle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Danger */
+.btnDanger {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--error);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.btnDanger:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: var(--error);
+}

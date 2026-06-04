@@ -1,0 +1,134 @@
+.panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.headerIcon {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.headerTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ─── Loading ─── */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-bright);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Empty ─── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+  opacity: 0.5;
+}
+
+.empty p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.emptyHint {
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+}
+
+/* ─── Content ─── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.section {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.fileName {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-accent);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* ─── Stat rows ─── */
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.statValue {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-weight: 500;
+}
