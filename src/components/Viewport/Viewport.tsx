@@ -1,4 +1,3 @@
-import { useRef, useEffect } from 'react'
 import styles from './Viewport.module.css'
 
 interface ViewportProps {

@@ -1,16 +1,21 @@
 .panel {
-  width: 220px;
   flex-shrink: 0;
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transition: width var(--transition-base);
+  min-width: 180px;
+  max-width: 460px;
 }
 
 .collapsed {
   width: 32px;
+}
+
+:global(body.is-resizing-sidebars) .panel {
+  transition: none;
 }
 
 /* ─── Header ─── */

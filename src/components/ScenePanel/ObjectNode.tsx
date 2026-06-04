@@ -27,6 +27,28 @@ function getTypeIcon(type: string): string {
   }
 }
 
+function formatMeta(node: SceneNode): string {
+  const parts = [node.type]
+  if (node.children.length > 0) parts.push(`${node.children.length} child${node.children.length === 1 ? '' : 'ren'}`)
+  if (node.materialIds.length > 0) parts.push(`${node.materialIds.length} material${node.materialIds.length === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+}
+
+function getCategoryLabel(node: SceneNode): string | null {
+  switch (node.meshCategory) {
+    case 'floor':
+      return 'sàn'
+    case 'wall':
+      return 'tường'
+    case 'tile':
+      return 'gạch'
+    case 'brick':
+      return 'brick'
+    default:
+      return null
+  }
+}
+
 export function ObjectNode({
   node,
   selectedUuid,
@@ -75,8 +97,14 @@ export function ObjectNode({
         <span className={styles.typeIcon}>{getTypeIcon(node.type)}</span>
 
         {/* Name */}
-        <span className={styles.name} title={node.name}>
-          {node.name}
+        <span className={styles.nameWrap} title={node.name}>
+          <span className={styles.nameLine}>
+            <span className={styles.name}>{node.name}</span>
+            {getCategoryLabel(node) && (
+              <span className={styles.categoryBadge}>{getCategoryLabel(node)}</span>
+            )}
+          </span>
+          <span className={styles.meta}>{formatMeta(node)}</span>
         </span>
 
         {/* Visibility toggle */}

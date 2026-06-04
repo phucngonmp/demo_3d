@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { SceneNode } from '../../core/types'
 import { ObjectNode } from './ObjectNode'
 import styles from './ScenePanel.module.css'
@@ -7,6 +6,7 @@ interface ScenePanelProps {
   nodes: SceneNode[]
   selectedUuid: string | null
   isCollapsed: boolean
+  width: number
   onToggleCollapse: () => void
   onSelectNode: (uuid: string | null) => void
   onToggleVisibility: (uuid: string, visible: boolean) => void
@@ -16,6 +16,7 @@ export function ScenePanel({
   nodes,
   selectedUuid,
   isCollapsed,
+  width,
   onToggleCollapse,
   onSelectNode,
   onToggleVisibility,
@@ -23,6 +24,7 @@ export function ScenePanel({
   return (
     <aside
       className={`${styles.panel} ${isCollapsed ? styles.collapsed : ''}`}
+      style={{ width: isCollapsed ? undefined : `${width}px` }}
       aria-label="Scene hierarchy"
     >
       {/* Header */}

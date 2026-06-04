@@ -1,24 +1,16 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react'
+import { useState, useLayoutEffect, type ReactNode } from 'react'
+import { ThemeContext, type Theme } from './theme'
 
-export type Theme = 'dark' | 'light'
-
-interface ThemeContextValue {
-  theme: Theme
-  toggleTheme: () => void
+function getInitialTheme(): Theme {
+  return localStorage.getItem('glb-theme') === 'light' ? 'light' : 'dark'
 }
 
-const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'dark',
-  toggleTheme: () => {},
-})
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('glb-theme') as Theme) ?? 'dark'
-  })
+  const [theme, setTheme] = useState<Theme>(getInitialTheme)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.colorScheme = theme
     localStorage.setItem('glb-theme', theme)
   }, [theme])
 
@@ -29,8 +21,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       {children}
     </ThemeContext.Provider>
   )
-}
-
-export function useTheme() {
-  return useContext(ThemeContext)
 }
