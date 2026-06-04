@@ -26,3 +26,29 @@ export interface ViewerState {
   wireframe: boolean
   showGrid: boolean
 }
+
+/** One node in the scene object hierarchy tree */
+export interface SceneNode {
+  uuid: string
+  name: string
+  type: string          // 'Mesh' | 'Group' | 'Object3D' | 'SkinnedMesh' ...
+  visible: boolean
+  children: SceneNode[]
+  materialIds: string[] // uuids of attached materials (for Mesh nodes)
+  depth: number
+}
+
+/** Editable snapshot of a Three.js material */
+export interface MaterialData {
+  uuid: string
+  name: string
+  type: string
+  color: string         // hex e.g. '#ffffff'
+  roughness: number     // 0–1
+  metalness: number     // 0–1
+  emissive: string      // hex
+  opacity: number       // 0–1
+  transparent: boolean
+  hasMap: boolean
+  mapPreviewUrl?: string
+}

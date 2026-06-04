@@ -58,9 +58,8 @@ export class SceneManager {
     rimLight.position.set(0, -5, -5)
     this.scene.add(rimLight)
 
-    // Grid
-    this.grid = new GridHelper(20, 40, 0x444466, 0x222233)
-    this.grid.position.y = 0
+    // Grid (dark mode default)
+    this.grid = this.createGrid('dark')
     this.scene.add(this.grid)
   }
 
@@ -109,4 +108,31 @@ export class SceneManager {
   setGridVisible(visible: boolean): void {
     this.grid.visible = visible
   }
+
+  private createGrid(theme: 'dark' | 'light'): GridHelper {
+    // dark: deep indigo lines on dark bg
+    // light: medium slate lines on light gray bg — visible but not jarring
+    const [center, lines] =
+      theme === 'dark'
+        ? [0x444466, 0x222233]
+        : [0x7a80a0, 0xadb3c8]
+    const grid = new GridHelper(20, 40, center, lines)
+    grid.position.y = 0
+    return grid
+  }
+
+  setTheme(theme: 'dark' | 'light'): void {
+    const bg = theme === 'dark' ? '#0d0d14' : '#c5cad8'
+    this.scene.background = new Color(bg)
+    this.renderer.setClearColor(new Color(bg))
+
+    // Recreate grid with correct colors for this theme
+    const wasVisible = this.grid.visible
+    this.scene.remove(this.grid)
+    this.grid.geometry.dispose()
+    this.grid = this.createGrid(theme)
+    this.grid.visible = wasVisible
+    this.scene.add(this.grid)
+  }
 }
+

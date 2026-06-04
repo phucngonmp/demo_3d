@@ -60,6 +60,31 @@
   --shadow-accent: 0 0 20px var(--accent-glow);
 }
 
+/* ─── Light Theme ─── */
+[data-theme="light"] {
+  --bg-app: #e6e8f2;
+  --bg-primary: #eceef7;
+  --bg-surface: #f5f6fb;
+  --bg-panel: #eff0f8;
+  --bg-panel-hover: #e2e4f0;
+  --bg-input: #e8eaf5;
+
+  --text-primary: #1c1c2e;
+  --text-secondary: #404060;
+  --text-muted: #7878a0;
+  --text-accent: #4f3fcf;
+
+  --border: rgba(0, 0, 0, 0.09);
+  --border-bright: rgba(0, 0, 0, 0.16);
+
+  --accent-dim: rgba(124, 106, 247, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.10);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.14);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+
 /* ─── Reset ─── */
 *,
 *::before,

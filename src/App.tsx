@@ -3,21 +3,34 @@ import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { InfoPanel } from './components/InfoPanel/InfoPanel'
 import { DropZone } from './components/DropZone/DropZone'
+import { ScenePanel } from './components/ScenePanel/ScenePanel'
+import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
 import { useModelViewer } from './hooks/useModelViewer'
 import styles from './App.module.css'
+
+type RightTab = 'properties' | 'materials'
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [scenePanelCollapsed, setScenePanelCollapsed] = useState(false)
+  const [activeTab, setActiveTab] = useState<RightTab>('properties')
 
   const {
     state,
+    sceneNodes,
+    materialMap,
+    selectedNodeUuid,
     loadFile,
     toggleWireframe,
     toggleGrid,
     resetCamera,
     clearModel,
     dismissError,
+    selectNode,
+    toggleObjectVisibility,
+    updateMaterial,
+    swapTexture,
   } = useModelViewer(containerRef)
 
   const handleDragStateChange = useCallback((dragging: boolean) => {
@@ -26,7 +39,7 @@ function App() {
 
   return (
     <div className={styles.app}>
-      {/* Top toolbar */}
+      {/* ── Toolbar ── */}
       <Toolbar
         wireframe={state.wireframe}
         showGrid={state.showGrid}
@@ -38,13 +51,24 @@ function App() {
         onClearModel={clearModel}
       />
 
-      {/* Main work area */}
+      {/* ── Work area: left | center | right ── */}
       <div className={styles.workArea}>
-        {/* 3D Viewport */}
+
+        {/* Left: collapsible Scene Panel */}
+        <ScenePanel
+          nodes={sceneNodes}
+          selectedUuid={selectedNodeUuid}
+          isCollapsed={scenePanelCollapsed}
+          onToggleCollapse={() => setScenePanelCollapsed((v) => !v)}
+          onSelectNode={selectNode}
+          onToggleVisibility={toggleObjectVisibility}
+        />
+
+        {/* Center: 3D Viewport */}
         <div className={styles.viewportWrapper}>
           <Viewport containerRef={containerRef} isDragOver={isDragOver} />
 
-          {/* Empty state hint — only when no model */}
+          {/* Empty state */}
           {!state.hasModel && !state.isLoading && (
             <div className={styles.emptyHint}>
               <div className={styles.emptyIcon}>
@@ -76,11 +100,48 @@ function App() {
           )}
         </div>
 
-        {/* Right sidebar */}
-        <InfoPanel modelInfo={state.modelInfo} isLoading={state.isLoading} />
+        {/* Right: tab switcher (Properties | Materials) */}
+        <div className={styles.rightSidebar}>
+          {/* Tab bar */}
+          <div className={styles.tabBar}>
+            <button
+              id="tab-properties"
+              className={`${styles.tab} ${activeTab === 'properties' ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab('properties')}
+            >
+              Properties
+            </button>
+            <button
+              id="tab-materials"
+              className={`${styles.tab} ${activeTab === 'materials' ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab('materials')}
+            >
+              Materials
+              {materialMap.size > 0 && (
+                <span className={styles.tabBadge}>{materialMap.size}</span>
+              )}
+            </button>
+          </div>
+
+          {/* Tab content */}
+          <div className={styles.tabContent}>
+            {activeTab === 'properties' ? (
+              <InfoPanel
+                modelInfo={state.modelInfo}
+                isLoading={state.isLoading}
+              />
+            ) : (
+              <MaterialPanel
+                materials={materialMap}
+                onUpdateMaterial={updateMaterial}
+                onSwapTexture={swapTexture}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Status bar */}
+      {/* ── Status bar ── */}
       <div className={styles.statusBar}>
         <span className={styles.statusItem}>
           <span className={`${styles.dot} ${state.hasModel ? styles.dotGreen : styles.dotGray}`} />
@@ -92,6 +153,14 @@ function App() {
             <span className={styles.statusItem}>
               {state.modelInfo?.triangleCount.toLocaleString()} triangles
             </span>
+            {selectedNodeUuid && (
+              <>
+                <span className={styles.statusSep}>·</span>
+                <span className={styles.statusItem} style={{ color: 'var(--accent)' }}>
+                  1 object selected
+                </span>
+              </>
+            )}
           </>
         )}
         <span className={styles.statusSpacer} />
