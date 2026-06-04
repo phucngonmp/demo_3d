@@ -1,13 +1,15 @@
 import {
   MeshStandardMaterial,
+  Material,
   Mesh,
   TextureLoader,
-  Color,
+  Box3,
+  Vector3,
   type Object3D,
 } from 'three'
-import type { SceneNode, MaterialData } from './types'
+import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem } from './types'
 
-type AnyMaterial = MeshStandardMaterial & { needsUpdate: boolean }
+type AnyMaterial = Material
 
 export class MaterialManager {
   /** Build a recursive SceneNode tree from an Object3D root */
@@ -26,9 +28,38 @@ export class MaterialManager {
         children: obj.children.map((c) => buildNode(c, depth + 1)),
         materialIds,
         depth,
+        meshCategory: obj instanceof Mesh ? this.getMeshCategory(obj) : undefined,
       }
     }
     return [buildNode(root, 0)]
+  }
+
+  getMeshInventory(root: Object3D): MeshInventoryItem[] {
+    const items: MeshInventoryItem[] = []
+
+    root.traverse((child) => {
+      if (!(child instanceof Mesh)) return
+
+      const size = this.getObjectSize(child)
+      const materials = Array.isArray(child.material)
+        ? child.material
+        : [child.material]
+
+      items.push({
+        uuid: child.uuid,
+        name: child.name || '[Mesh]',
+        category: this.getMeshCategory(child),
+        materialNames: materials.map((mat) => mat.name || mat.type),
+        triangleCount: this.getTriangleCount(child),
+        dimensions: {
+          x: parseFloat(size.x.toFixed(3)),
+          y: parseFloat(size.y.toFixed(3)),
+          z: parseFloat(size.z.toFixed(3)),
+        },
+      })
+    })
+
+    return items
   }
 
   /** Build a flat uuid → Object3D map for fast lookup */
@@ -70,6 +101,98 @@ export class MaterialManager {
       }
     })
     return map
+  }
+
+  isolateMaterialToObject(
+    root: Object3D,
+    selectedObject: Object3D,
+    materialUuid: string
+  ): AnyMaterial | null {
+    const selectedObjects = new Set<Object3D>()
+    selectedObject.traverse((obj) => selectedObjects.add(obj))
+
+    let selectedMaterial: AnyMaterial | null = null
+    let outsideMaterialClone: AnyMaterial | null = null
+
+    root.traverse((child) => {
+      if (!(child instanceof Mesh)) return
+
+      const materials = Array.isArray(child.material)
+        ? child.material
+        : [child.material]
+      let changed = false
+
+      const nextMaterials = materials.map((mat) => {
+        if (mat.uuid !== materialUuid) return mat
+
+        if (selectedObjects.has(child)) {
+          selectedMaterial = mat
+          return mat
+        }
+
+        outsideMaterialClone ??= mat.clone()
+        changed = true
+        return outsideMaterialClone
+      })
+
+      if (changed) {
+        child.material = Array.isArray(child.material)
+          ? nextMaterials
+          : nextMaterials[0]
+      }
+    })
+
+    return selectedMaterial
+  }
+
+  getMeshCategory(mesh: Mesh): MeshCategory {
+    const text = this.getSearchText(mesh)
+    if (/\b(brick|bricks|masonry)\b/.test(text)) return 'brick'
+    if (/\b(tile|tiles|tiling|ceramic|porcelain|gach|gạch)\b/.test(text)) return 'tile'
+    if (/\b(floor|flooring|ground|san|sàn|parquet|woodfloor)\b/.test(text)) return 'floor'
+    if (/\b(wall|walls|tuong|tường|partition)\b/.test(text)) return 'wall'
+
+    const size = this.getObjectSize(mesh)
+    const maxHorizontal = Math.max(size.x, size.z)
+    const minHorizontal = Math.min(size.x, size.z)
+    const isWide = maxHorizontal > 0.5
+    const isVeryThinY = size.y < Math.max(size.x, size.z) * 0.08
+    const isVerticalSheet = size.y > 0.5 && minHorizontal < Math.max(size.y, maxHorizontal) * 0.12
+
+    if (isWide && isVeryThinY) return 'floor'
+    if (isVerticalSheet) return 'wall'
+
+    return 'other'
+  }
+
+  private getSearchText(mesh: Mesh): string {
+    const materials = Array.isArray(mesh.material)
+      ? mesh.material
+      : [mesh.material]
+    return [
+      mesh.name,
+      mesh.type,
+      mesh.parent?.name,
+      ...materials.map((mat) => mat.name),
+      ...materials.map((mat) => mat.type),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+  }
+
+  private getObjectSize(object: Object3D): Vector3 {
+    const box = new Box3().setFromObject(object)
+    const size = new Vector3()
+    box.getSize(size)
+    return size
+  }
+
+  private getTriangleCount(mesh: Mesh): number {
+    const geo = mesh.geometry
+    if (geo.index) return Math.round(geo.index.count / 3)
+    if (geo.attributes.position) return Math.round(geo.attributes.position.count / 3)
+    return 0
   }
 
   private materialToData(mat: AnyMaterial): MaterialData {
@@ -144,33 +267,6 @@ export class MaterialManager {
   setVisibility(uuid: string, visible: boolean, objectMap: Map<string, Object3D>): void {
     const obj = objectMap.get(uuid)
     if (obj) obj.visible = visible
-  }
-
-  /** Brief emissive flash to indicate which object is selected */
-  highlightObject(uuid: string, objectMap: Map<string, Object3D>): void {
-    const obj = objectMap.get(uuid)
-    if (!obj) return
-
-    const meshes: Mesh[] = []
-    if (obj instanceof Mesh) meshes.push(obj)
-    obj.traverse((child) => {
-      if (child instanceof Mesh) meshes.push(child)
-    })
-
-    meshes.forEach((mesh) => {
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      mats.forEach((mat) => {
-        if (mat instanceof MeshStandardMaterial) {
-          const orig = mat.emissive.clone()
-          mat.emissive.set('#4433cc')
-          mat.needsUpdate = true
-          setTimeout(() => {
-            mat.emissive.copy(orig)
-            mat.needsUpdate = true
-          }, 350)
-        }
-      })
-    })
   }
 
   /** Update sceneNode visibility state recursively */

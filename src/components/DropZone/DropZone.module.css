@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 8, 16, 0.75);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(4px);
   animation: fadeIn 120ms ease;
 }

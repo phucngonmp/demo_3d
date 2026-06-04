@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { InfoPanel } from './components/InfoPanel/InfoPanel'
@@ -9,12 +9,29 @@ import { useModelViewer } from './hooks/useModelViewer'
 import styles from './App.module.css'
 
 type RightTab = 'properties' | 'materials'
+type ResizeSide = 'left' | 'right'
+
+const LEFT_MIN_WIDTH = 180
+const LEFT_MAX_WIDTH = 460
+const RIGHT_MIN_WIDTH = 220
+const RIGHT_MAX_WIDTH = 520
+const RESIZING_CLASS = 'is-resizing-sidebars'
+const COMMIT_RESIZE_EVENT = 'glb-viewer:commit-resize'
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [scenePanelCollapsed, setScenePanelCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<RightTab>('properties')
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(260)
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(300)
+  const leftSidebarWidthRef = useRef(leftSidebarWidth)
+  const rightSidebarWidthRef = useRef(rightSidebarWidth)
+  const resizeFrameRef = useRef<number | null>(null)
 
   const {
     state,
@@ -36,6 +53,62 @@ function App() {
   const handleDragStateChange = useCallback((dragging: boolean) => {
     setIsDragOver(dragging)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current)
+      }
+      document.body.classList.remove(RESIZING_CLASS)
+    }
+  }, [])
+
+  const scheduleResizeFrame = useCallback(() => {
+    if (resizeFrameRef.current !== null) return
+
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      setLeftSidebarWidth(leftSidebarWidthRef.current)
+      setRightSidebarWidth(rightSidebarWidthRef.current)
+      resizeFrameRef.current = null
+    })
+  }, [])
+
+  const startResize = useCallback((side: ResizeSide, event: React.PointerEvent<HTMLDivElement>) => {
+    const startX = event.clientX
+    const initialLeftWidth = leftSidebarWidthRef.current
+    const initialRightWidth = rightSidebarWidthRef.current
+
+    event.currentTarget.setPointerCapture(event.pointerId)
+    document.body.classList.add(RESIZING_CLASS)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX
+      if (side === 'left') {
+        leftSidebarWidthRef.current = clamp(initialLeftWidth + delta, LEFT_MIN_WIDTH, LEFT_MAX_WIDTH)
+      } else {
+        rightSidebarWidthRef.current = clamp(initialRightWidth - delta, RIGHT_MIN_WIDTH, RIGHT_MAX_WIDTH)
+      }
+      scheduleResizeFrame()
+    }
+
+    const handlePointerUp = () => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current)
+        resizeFrameRef.current = null
+      }
+      setLeftSidebarWidth(leftSidebarWidthRef.current)
+      setRightSidebarWidth(rightSidebarWidthRef.current)
+      document.body.classList.remove(RESIZING_CLASS)
+      window.dispatchEvent(new Event(COMMIT_RESIZE_EVENT))
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+  }, [scheduleResizeFrame])
 
   return (
     <div className={styles.app}>
@@ -59,10 +132,20 @@ function App() {
           nodes={sceneNodes}
           selectedUuid={selectedNodeUuid}
           isCollapsed={scenePanelCollapsed}
+          width={leftSidebarWidth}
           onToggleCollapse={() => setScenePanelCollapsed((v) => !v)}
           onSelectNode={selectNode}
           onToggleVisibility={toggleObjectVisibility}
         />
+        {!scenePanelCollapsed && (
+          <div
+            className={`${styles.resizeHandle} ${styles.leftResizeHandle}`}
+            onPointerDown={(event) => startResize('left', event)}
+            role="separator"
+            aria-label="Resize scene panel"
+            aria-orientation="vertical"
+          />
+        )}
 
         {/* Center: 3D Viewport */}
         <div className={styles.viewportWrapper}>
@@ -101,7 +184,17 @@ function App() {
         </div>
 
         {/* Right: tab switcher (Properties | Materials) */}
-        <div className={styles.rightSidebar}>
+        <div
+          className={`${styles.resizeHandle} ${styles.rightResizeHandle}`}
+          onPointerDown={(event) => startResize('right', event)}
+          role="separator"
+          aria-label="Resize right sidebar"
+          aria-orientation="vertical"
+        />
+        <div
+          className={styles.rightSidebar}
+          style={{ width: `${rightSidebarWidth}px` }}
+        >
           {/* Tab bar */}
           <div className={styles.tabBar}>
             <button

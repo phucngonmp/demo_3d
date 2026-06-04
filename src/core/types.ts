@@ -1,5 +1,7 @@
 import type { Object3D } from 'three'
 
+export type MeshCategory = 'floor' | 'wall' | 'tile' | 'brick' | 'other'
+
 export interface ModelInfo {
   fileName: string
   triangleCount: number
@@ -36,6 +38,20 @@ export interface SceneNode {
   children: SceneNode[]
   materialIds: string[] // uuids of attached materials (for Mesh nodes)
   depth: number
+  meshCategory?: MeshCategory
+}
+
+export interface MeshInventoryItem {
+  uuid: string
+  name: string
+  category: MeshCategory
+  materialNames: string[]
+  triangleCount: number
+  dimensions: {
+    x: number
+    y: number
+    z: number
+  }
 }
 
 /** Editable snapshot of a Three.js material */

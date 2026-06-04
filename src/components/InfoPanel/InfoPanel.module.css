@@ -1,7 +1,7 @@
 .panel {
   width: 220px;
   flex-shrink: 0;
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;

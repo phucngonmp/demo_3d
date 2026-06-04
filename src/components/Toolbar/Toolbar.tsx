@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { useTheme } from '../../context/ThemeContext'
+import { useTheme } from '../../context/useTheme'
 import styles from './Toolbar.module.css'
 
 interface ToolbarProps {

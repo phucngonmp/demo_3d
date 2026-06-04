@@ -10,6 +10,7 @@ Tài liệu thiết kế và kế hoạch triển khai cho dự án **GLB Viewer
 |---|---|---|
 | [`phase1-glb-viewer.md`](./phase1-glb-viewer.md) | Phase 1 ✅ | GLB viewer cơ bản — load, xem model 3D, orbit camera |
 | [`phase2-theme-scene-material.md`](./phase2-theme-scene-material.md) | Phase 2 ✅ | Light/Dark mode + Scene Panel + Material Editor |
+| [`phase3-direct-selection-material-scope.md`](./phase3-direct-selection-material-scope.md) | Phase 3 ✅ | Chọn trực tiếp trên viewport + scoped material editing |
 
 ---
 

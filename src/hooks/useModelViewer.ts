@@ -1,10 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import type { Object3D } from 'three'
+import type { Material, Object3D } from 'three'
 import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
 import { CameraController } from '../core/CameraController'
 import { MaterialManager } from '../core/MaterialManager'
-import { useTheme } from '../context/ThemeContext'
+import { useTheme } from '../context/useTheme'
 import type { ViewerState, ModelInfo, SceneNode, MaterialData } from '../core/types'
 
 const DEFAULT_STATE: ViewerState = {
@@ -24,7 +24,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const materialManagerRef = useRef<MaterialManager | null>(null)
   const currentModelRef = useRef<Object3D | null>(null)
   const objectMapRef = useRef<Map<string, Object3D>>(new Map())
-  const materialObjectMapRef = useRef<Map<string, any>>(new Map())
+  const materialObjectMapRef = useRef<Map<string, Material>>(new Map())
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null)
 
   // React state
   const [state, setState] = useState<ViewerState>(DEFAULT_STATE)
@@ -32,10 +33,12 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const [materialMap, setMaterialMap] = useState<Map<string, MaterialData>>(new Map())
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
 
-  // Always-current theme ref to avoid stale closures in mount effect
   const { theme } = useTheme()
   const themeRef = useRef(theme)
-  themeRef.current = theme
+
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
 
   // ── Mount / Unmount Three.js ──────────────────────────────────────
   useEffect(() => {
@@ -47,7 +50,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     const loader = new ModelLoader()
     const manager = new MaterialManager()
 
-    scene.setTheme(themeRef.current) // Set initial theme without creating a dep
+    scene.setTheme(themeRef.current)
     scene.mount(container)
     scene.startLoop(() => controller.update())
 
@@ -103,12 +106,29 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       // Build scene tree + material data
       const nodes = manager.extractSceneTree(object)
       const matMap = manager.extractMaterials(object)
+      const meshInventory = manager.getMeshInventory(object)
       objectMapRef.current = manager.buildObjectMap(object)
       materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
+
+      console.groupCollapsed(`[GLB Viewer] Mesh list: ${file.name}`)
+      console.table(
+        meshInventory.map((mesh) => ({
+          category: mesh.category,
+          name: mesh.name,
+          uuid: mesh.uuid,
+          materials: mesh.materialNames.join(', '),
+          triangles: mesh.triangleCount,
+          sizeX: mesh.dimensions.x,
+          sizeY: mesh.dimensions.y,
+          sizeZ: mesh.dimensions.z,
+        }))
+      )
+      console.groupEnd()
 
       setSceneNodes(nodes)
       setMaterialMap(matMap)
       setSelectedNodeUuid(null)
+      scene.clearSelection()
 
       setState((prev) => ({
         ...prev,
@@ -173,6 +193,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     setSceneNodes([])
     setMaterialMap(new Map())
     setSelectedNodeUuid(null)
+    scene.clearSelection()
     setState((prev) => ({
       ...prev,
       hasModel: false,
@@ -188,23 +209,66 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   // ── Scene Panel actions ───────────────────────────────────────────
   const selectNode = useCallback((uuid: string | null) => {
     setSelectedNodeUuid(uuid)
-    if (uuid) {
-      materialManagerRef.current?.highlightObject(uuid, objectMapRef.current)
-    }
+    sceneRef.current?.setSelectedObject(uuid ? objectMapRef.current.get(uuid) ?? null : null)
   }, [])
+
+  useEffect(() => {
+    const scene = sceneRef.current
+    const canvas = scene?.renderer.domElement
+    if (!scene || !canvas) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return
+      pointerDownRef.current = { x: event.clientX, y: event.clientY }
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const start = pointerDownRef.current
+      pointerDownRef.current = null
+      if (!start || event.button !== 0) return
+
+      const dx = event.clientX - start.x
+      const dy = event.clientY - start.y
+      if (Math.hypot(dx, dy) > 5) return
+
+      const model = currentModelRef.current
+      if (!model) return
+
+      const picked = scene.pickObjectAt(event.clientX, event.clientY, model)
+      selectNode(picked?.uuid ?? null)
+    }
+
+    canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('pointerup', handlePointerUp)
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [selectNode])
 
   const toggleObjectVisibility = useCallback((uuid: string, visible: boolean) => {
     const manager = materialManagerRef.current
     if (!manager) return
     manager.setVisibility(uuid, visible, objectMapRef.current)
+    if (uuid === selectedNodeUuid) {
+      sceneRef.current?.setSelectedObject(visible ? objectMapRef.current.get(uuid) ?? null : null)
+    }
     setSceneNodes((prev) => manager.updateNodeVisibility(prev, uuid, visible))
-  }, [])
+  }, [selectedNodeUuid])
 
   // ── Material Panel actions ────────────────────────────────────────
   const updateMaterial = useCallback(
     (uuid: string, patch: Partial<MaterialData>) => {
-      const mat = materialObjectMapRef.current.get(uuid)
       const manager = materialManagerRef.current
+      const model = currentModelRef.current
+      const selectedObject = selectedNodeUuid
+        ? objectMapRef.current.get(selectedNodeUuid) ?? null
+        : null
+      const mat =
+        model && selectedObject
+          ? manager?.isolateMaterialToObject(model, selectedObject, uuid)
+          : materialObjectMapRef.current.get(uuid)
       if (!mat || !manager) return
 
       if (patch.color !== undefined) manager.applyColor(mat, patch.color)
@@ -213,37 +277,47 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (patch.emissive !== undefined) manager.applyEmissive(mat, patch.emissive)
       if (patch.opacity !== undefined) manager.applyOpacity(mat, patch.opacity)
 
-      setMaterialMap((prev) => {
-        const next = new Map(prev)
-        const existing = next.get(uuid)
-        if (existing) next.set(uuid, { ...existing, ...patch })
-        return next
-      })
+      if (model) {
+        materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
+        setSceneNodes(manager.extractSceneTree(model))
+        setMaterialMap(manager.extractMaterials(model))
+      }
     },
-    []
+    [selectedNodeUuid]
   )
 
   const swapTexture = useCallback(async (matUuid: string, file: File) => {
-    const mat = materialObjectMapRef.current.get(matUuid)
     const manager = materialManagerRef.current
+    const model = currentModelRef.current
+    const selectedObject = selectedNodeUuid
+      ? objectMapRef.current.get(selectedNodeUuid) ?? null
+      : null
+    const mat =
+      model && selectedObject
+        ? manager?.isolateMaterialToObject(model, selectedObject, matUuid)
+        : materialObjectMapRef.current.get(matUuid)
     if (!mat || !manager) return
 
     try {
       const previewUrl = await manager.swapTexture(mat, file)
+      if (model) {
+        materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
+        setSceneNodes(manager.extractSceneTree(model))
+      }
       setMaterialMap((prev) => {
-        const next = new Map(prev)
-        const existing = next.get(matUuid)
+        const next = model ? manager.extractMaterials(model) : new Map(prev)
+        const existing = next.get(mat.uuid)
         if (existing) {
           // Revoke old preview URL if any
           if (existing.mapPreviewUrl) URL.revokeObjectURL(existing.mapPreviewUrl)
-          next.set(matUuid, { ...existing, hasMap: true, mapPreviewUrl: previewUrl })
+          next.set(mat.uuid, { ...existing, hasMap: true, mapPreviewUrl: previewUrl })
         }
         return next
       })
     } catch {
       setState((prev) => ({ ...prev, error: 'Failed to load texture.' }))
     }
-  }, [])
+  }, [selectedNodeUuid])
 
   return {
     state,
