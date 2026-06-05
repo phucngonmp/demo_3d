@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import type { Material, Object3D } from 'three'
-import { MeshStandardMaterial } from 'three'
+import { MeshStandardMaterial, Mesh } from 'three'
 import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
 import { CameraController } from '../core/CameraController'
@@ -205,26 +205,45 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
       // Restore material overrides (autosave must be ON at time of saving)
       const overrides = loadOverrides(name)
-      if (overrides && autosaveRef.current) {
-        const matMap = materialObjectMapRef.current
-        matMap.forEach((mat) => {
-          const key = mat.name
-          if (!key) return
-          const o = overrides[key]
-          if (!o) return
-          if (o.color && mat instanceof MeshStandardMaterial) mat.color.set(o.color)
-          if (o.roughness !== undefined && mat instanceof MeshStandardMaterial) mat.roughness = o.roughness
-          if (o.metalness !== undefined && mat instanceof MeshStandardMaterial) mat.metalness = o.metalness
-          if (o.emissive && mat instanceof MeshStandardMaterial) mat.emissive.set(o.emissive)
-          if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
-          if (o.textureUrl) manager.applyTextureFromUrl(mat, o.textureUrl)
-          mat.needsUpdate = true
-        })
-        // Rebuild UI state to reflect restored overrides
-        if (object) {
-          setSceneNodes(manager.extractSceneTree(object))
-          setMaterialMap(manager.extractMaterials(object))
+      if (overrides && autosaveRef.current && object) {
+        // Hàm lấy đường dẫn gia phả của object để map chính xác sau khi F5
+        const getPath = (obj: Object3D) => {
+          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
+          let curr = obj.parent
+          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
+            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
+            curr = curr.parent
+          }
+          return path
         }
+
+        object.traverse((child) => {
+          if (child instanceof Mesh && child.material) {
+            const path = getPath(child)
+            const o = overrides[path]
+            if (o) {
+              // Clone material để đảm bảo không dính líu tới tường khác
+              child.material = Array.isArray(child.material) ? child.material.map((m: any) => m.clone()) : child.material.clone()
+              const mat = Array.isArray(child.material) ? child.material[0] : child.material
+              if (mat instanceof MeshStandardMaterial) {
+                mat.userData = mat.userData || {}
+                mat.userData.isModified = true
+                if (o.color) mat.color.set(o.color)
+                if (o.roughness !== undefined) mat.roughness = o.roughness
+                if (o.metalness !== undefined) mat.metalness = o.metalness
+                if (o.emissive) mat.emissive.set(o.emissive)
+                if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
+                if (o.textureUrl) manager.applyTextureFromUrl(mat, o.textureUrl)
+                mat.needsUpdate = true
+              }
+            }
+          }
+        })
+
+        // Rebuild UI state to reflect restored overrides
+        setSceneNodes(manager.extractSceneTree(object))
+        setMaterialMap(manager.extractMaterials(object))
+        materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
       }
     } catch (err) {
       console.error('Failed to load model:', err)
@@ -407,24 +426,42 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (patch.emissive !== undefined) manager.applyEmissive(mat, patch.emissive)
       if (patch.opacity !== undefined) manager.applyOpacity(mat, patch.opacity)
 
+      mat.userData = mat.userData || {}
+      mat.userData.isModified = true
+
       if (model) {
         materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
         setSceneNodes(manager.extractSceneTree(model))
         setMaterialMap(manager.extractMaterials(model))
       }
 
-      // Autosave material overrides
-      if (autosaveRef.current && currentFileNameRef.current) {
+      // Autosave material overrides (lưu theo gia phả vật thể thay vì tên vật liệu)
+      if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
-        materialObjectMapRef.current.forEach((m) => {
-          if (!m.name || !(m instanceof MeshStandardMaterial)) return
-          overrides[m.name] = {
-            color: '#' + m.color.getHexString(),
-            roughness: m.roughness,
-            metalness: m.metalness,
-            emissive: '#' + m.emissive.getHexString(),
-            opacity: m.opacity,
-            textureUrl: m.userData?.textureUrl,
+        const getPath = (obj: Object3D) => {
+          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
+          let curr = obj.parent
+          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
+            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
+            curr = curr.parent
+          }
+          return path
+        }
+
+        model.traverse((child) => {
+          if (child instanceof Mesh) {
+            const mat = Array.isArray(child.material) ? child.material[0] : child.material
+            if (mat && mat.userData?.isModified && mat instanceof MeshStandardMaterial) {
+              const path = getPath(child)
+              overrides[path] = {
+                color: '#' + mat.color.getHexString(),
+                roughness: mat.roughness,
+                metalness: mat.metalness,
+                emissive: '#' + mat.emissive.getHexString(),
+                opacity: mat.opacity,
+                textureUrl: mat.userData?.textureUrl,
+              }
+            }
           }
         })
         saveOverrides(currentFileNameRef.current, overrides)
@@ -447,27 +484,42 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
     try {
       await manager.applyTextureFromUrl(mat, url)
+      mat.userData = mat.userData || {}
+      mat.userData.isModified = true
+
       if (model) {
         materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
         setSceneNodes(manager.extractSceneTree(model))
+        setMaterialMap(manager.extractMaterials(model))
       }
-      setMaterialMap((prev) => {
-        const next = model ? manager.extractMaterials(model) : new Map(prev)
-        return next
-      })
 
-      // Autosave texture assignment
-      if (autosaveRef.current && currentFileNameRef.current) {
+      // Autosave material overrides (lưu theo gia phả vật thể)
+      if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
-        materialObjectMapRef.current.forEach((m) => {
-          if (!m.name || !(m instanceof MeshStandardMaterial)) return
-          overrides[m.name] = {
-            color: '#' + m.color.getHexString(),
-            roughness: m.roughness,
-            metalness: m.metalness,
-            emissive: '#' + m.emissive.getHexString(),
-            opacity: m.opacity,
-            textureUrl: m.userData?.textureUrl,
+        const getPath = (obj: Object3D) => {
+          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
+          let curr = obj.parent
+          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
+            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
+            curr = curr.parent
+          }
+          return path
+        }
+
+        model.traverse((child) => {
+          if (child instanceof Mesh) {
+            const m = Array.isArray(child.material) ? child.material[0] : child.material
+            if (m && m.userData?.isModified && m instanceof MeshStandardMaterial) {
+              const path = getPath(child)
+              overrides[path] = {
+                color: '#' + m.color.getHexString(),
+                roughness: m.roughness,
+                metalness: m.metalness,
+                emissive: '#' + m.emissive.getHexString(),
+                opacity: m.opacity,
+                textureUrl: m.userData?.textureUrl, // Saved in manager
+              }
+            }
           }
         })
         saveOverrides(currentFileNameRef.current, overrides)
