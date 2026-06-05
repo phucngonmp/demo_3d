@@ -1,9 +1,15 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import type { Material, Object3D } from 'three'
+import { MeshStandardMaterial } from 'three'
 import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
 import { CameraController } from '../core/CameraController'
 import { MaterialManager } from '../core/MaterialManager'
+import {
+  saveFile, loadStoredFile, clearStoredFile,
+  saveOverrides, loadOverrides, clearOverrides,
+  type MaterialOverride,
+} from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
 import type { ViewerState, ModelInfo, SceneNode, MaterialData } from '../core/types'
 
@@ -32,6 +38,13 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const [sceneNodes, setSceneNodes] = useState<SceneNode[]>([])
   const [materialMap, setMaterialMap] = useState<Map<string, MaterialData>>(new Map())
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
+  const [isReady, setIsReady] = useState(false)
+  const [autosave, setAutosave] = useState<boolean>(() => {
+    const stored = localStorage.getItem('glb-viewer:autosave')
+    return stored === null ? true : stored === 'true'
+  })
+  const autosaveRef = useRef(autosave)
+  const currentFileNameRef = useRef('')
 
   const { theme } = useTheme()
   const themeRef = useRef(theme)
@@ -39,6 +52,14 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   useEffect(() => {
     themeRef.current = theme
   }, [theme])
+
+  // Keep autosaveRef in sync and persist preference
+  useEffect(() => {
+    autosaveRef.current = autosave
+    localStorage.setItem('glb-viewer:autosave', String(autosave))
+  }, [autosave])
+
+  const toggleAutosave = useCallback(() => setAutosave((v) => !v), [])
 
   // ── Mount / Unmount Three.js ──────────────────────────────────────
   useEffect(() => {
@@ -58,8 +79,10 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     controllerRef.current = controller
     loaderRef.current = loader
     materialManagerRef.current = manager
+    setIsReady(true)
 
     return () => {
+      setIsReady(false)
       controller.dispose()
       scene.unmount()
       sceneRef.current = null
@@ -73,6 +96,19 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   useEffect(() => {
     sceneRef.current?.setTheme(theme)
   }, [theme])
+
+  // ── Auto-restore last model on mount ─────────────────────────────
+  // loadFileRef keeps the latest loadFile fn without adding it as a dep
+  const loadFileRef = useRef<((file: File) => Promise<void>) | null>(null)
+
+  useEffect(() => {
+    if (!isReady) return
+    loadStoredFile().then((file) => {
+      if (file && loadFileRef.current) {
+        loadFileRef.current(file)
+      }
+    })
+  }, [isReady])
 
   // ── Load a .glb / .gltf file ─────────────────────────────────────
   const loadFile = useCallback(async (file: File) => {
@@ -101,7 +137,16 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const { object, info } = await loader.loadFromFile(file)
       scene.scene.add(object)
       currentModelRef.current = object
-      controller.fitToObject(object, scene.camera)
+
+      // Tell controller which file we're viewing (needed for auto-save key)
+      controller.setFileName(file.name)
+      currentFileNameRef.current = file.name
+
+      // Try restoring saved camera pose for this file; fall back to auto-fit
+      const restored = controller.restoreCameraState(file.name)
+      if (!restored) {
+        controller.fitToObject(object, scene.camera)
+      }
 
       // Build scene tree + material data
       const nodes = manager.extractSceneTree(object)
@@ -140,6 +185,32 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
       // Reapply wireframe if it was on
       if (state.wireframe) loader.setWireframe(object, true)
+
+      // Persist to IndexedDB for auto-restore after refresh
+      saveFile(file)
+
+      // Restore material overrides (autosave must be ON at time of saving)
+      const overrides = loadOverrides(file.name)
+      if (overrides && autosaveRef.current) {
+        const matMap = materialObjectMapRef.current
+        matMap.forEach((mat) => {
+          const key = mat.name
+          if (!key) return
+          const o = overrides[key]
+          if (!o) return
+          if (o.color && mat instanceof MeshStandardMaterial) mat.color.set(o.color)
+          if (o.roughness !== undefined && mat instanceof MeshStandardMaterial) mat.roughness = o.roughness
+          if (o.metalness !== undefined && mat instanceof MeshStandardMaterial) mat.metalness = o.metalness
+          if (o.emissive && mat instanceof MeshStandardMaterial) mat.emissive.set(o.emissive)
+          if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
+          mat.needsUpdate = true
+        })
+        // Rebuild UI state to reflect restored overrides
+        if (object) {
+          setSceneNodes(manager.extractSceneTree(object))
+          setMaterialMap(manager.extractMaterials(object))
+        }
+      }
     } catch (err) {
       console.error('Failed to load model:', err)
       setState((prev) => ({
@@ -149,6 +220,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       }))
     }
   }, [state.wireframe])
+
+  // Keep ref in sync so auto-restore always calls the latest version
+  loadFileRef.current = loadFile
 
   // ── Scene controls ────────────────────────────────────────────────
   const toggleWireframe = useCallback(() => {
@@ -194,6 +268,10 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     setMaterialMap(new Map())
     setSelectedNodeUuid(null)
     scene.clearSelection()
+    clearStoredFile()
+    clearOverrides()
+    currentFileNameRef.current = ''
+    controllerRef.current?.clearCameraState()
     setState((prev) => ({
       ...prev,
       hasModel: false,
@@ -282,6 +360,22 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         setSceneNodes(manager.extractSceneTree(model))
         setMaterialMap(manager.extractMaterials(model))
       }
+
+      // Autosave material overrides
+      if (autosaveRef.current && currentFileNameRef.current) {
+        const overrides: Record<string, MaterialOverride> = {}
+        materialObjectMapRef.current.forEach((m) => {
+          if (!m.name || !(m instanceof MeshStandardMaterial)) return
+          overrides[m.name] = {
+            color: '#' + m.color.getHexString(),
+            roughness: m.roughness,
+            metalness: m.metalness,
+            emissive: '#' + m.emissive.getHexString(),
+            opacity: m.opacity,
+          }
+        })
+        saveOverrides(currentFileNameRef.current, overrides)
+      }
     },
     [selectedNodeUuid]
   )
@@ -324,6 +418,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneNodes,
     materialMap,
     selectedNodeUuid,
+    autosave,
     loadFile,
     toggleWireframe,
     toggleGrid,
@@ -334,6 +429,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     toggleObjectVisibility,
     updateMaterial,
     swapTexture,
+    toggleAutosave,
   }
 }
 

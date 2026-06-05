@@ -143,3 +143,14 @@
   color: var(--text-primary);
   box-shadow: 0 0 8px var(--accent-glow);
 }
+
+.btnIconActive {
+  background: var(--bg-input);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.btnIconActive:hover {
+  box-shadow: 0 0 12px var(--accent-glow);
+}

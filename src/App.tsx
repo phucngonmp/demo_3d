@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { InfoPanel } from './components/InfoPanel/InfoPanel'
@@ -6,6 +6,7 @@ import { DropZone } from './components/DropZone/DropZone'
 import { ScenePanel } from './components/ScenePanel/ScenePanel'
 import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
 import { useModelViewer } from './hooks/useModelViewer'
+import type { SceneNode, MaterialData } from './core/types'
 import styles from './App.module.css'
 
 type RightTab = 'properties' | 'materials'
@@ -38,6 +39,7 @@ function App() {
     sceneNodes,
     materialMap,
     selectedNodeUuid,
+    autosave,
     loadFile,
     toggleWireframe,
     toggleGrid,
@@ -48,7 +50,36 @@ function App() {
     toggleObjectVisibility,
     updateMaterial,
     swapTexture,
+    toggleAutosave,
   } = useModelViewer(containerRef)
+
+  // ── Scope materials to selected object ───────────────────────────
+  const scopedMaterialMap = useMemo((): Map<string, MaterialData> => {
+    if (!selectedNodeUuid) return new Map()
+
+    function findNode(nodes: SceneNode[], uuid: string): SceneNode | null {
+      for (const node of nodes) {
+        if (node.uuid === uuid) return node
+        const found = findNode(node.children, uuid)
+        if (found) return found
+      }
+      return null
+    }
+
+    function collectIds(node: SceneNode): string[] {
+      return [...node.materialIds, ...node.children.flatMap(collectIds)]
+    }
+
+    const node = findNode(sceneNodes, selectedNodeUuid)
+    if (!node) return new Map()
+    const ids = new Set(collectIds(node))
+    return new Map([...materialMap].filter(([uuid]) => ids.has(uuid)))
+  }, [selectedNodeUuid, sceneNodes, materialMap])
+
+  // Auto-switch to Materials tab when an object is selected
+  useEffect(() => {
+    if (selectedNodeUuid) setActiveTab('materials')
+  }, [selectedNodeUuid])
 
   const handleDragStateChange = useCallback((dragging: boolean) => {
     setIsDragOver(dragging)
@@ -117,11 +148,13 @@ function App() {
         wireframe={state.wireframe}
         showGrid={state.showGrid}
         hasModel={state.hasModel}
+        autosave={autosave}
         onOpenFile={loadFile}
         onToggleWireframe={toggleWireframe}
         onToggleGrid={toggleGrid}
         onResetCamera={resetCamera}
         onClearModel={clearModel}
+        onToggleAutosave={toggleAutosave}
       />
 
       {/* ── Work area: left | center | right ── */}
@@ -225,7 +258,8 @@ function App() {
               />
             ) : (
               <MaterialPanel
-                materials={materialMap}
+                materials={scopedMaterialMap}
+                hasSelection={!!selectedNodeUuid}
                 onUpdateMaterial={updateMaterial}
                 onSwapTexture={swapTexture}
               />
