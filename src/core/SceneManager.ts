@@ -15,6 +15,7 @@ import {
   PCFSoftShadowMap,
   Raycaster,
   Vector2,
+  Vector3,
   type Object3D,
 } from 'three'
 
@@ -182,6 +183,21 @@ export class SceneManager {
 
     const [hit] = this.raycaster.intersectObjects(pickTargets, false)
     return hit?.object ?? null
+  }
+
+  raycastPoint(clientX: number, clientY: number, root: Object3D): Vector3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+
+    const pickTargets: Mesh[] = []
+    root.traverse((child) => {
+      if (child instanceof Mesh && child.visible) pickTargets.push(child)
+    })
+
+    const [hit] = this.raycaster.intersectObjects(pickTargets, false)
+    return hit ? hit.point : null
   }
 
   setSelectedObject(object: Object3D | null): void {

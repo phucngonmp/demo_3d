@@ -28,6 +28,7 @@ export interface ViewerState {
   wireframe: boolean
   showGrid: boolean
   exposure: number
+  cameraMode: 'orbit' | 'interior'
 }
 
 /** One node in the scene object hierarchy tree */

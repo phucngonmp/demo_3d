@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { MaterialData } from '../../core/types'
 import { MaterialEditor } from './MaterialEditor'
 import styles from './MaterialPanel.module.css'
@@ -18,6 +18,16 @@ export function MaterialPanel({
 }: MaterialPanelProps) {
   const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
   const matArray = Array.from(materials.values())
+
+  // Tự động xổ tung vật liệu đầu tiên khi sếp vừa click chọn vật thể
+  useEffect(() => {
+    if (matArray.length > 0) {
+      // Nếu chưa có thẻ nào mở, hoặc thẻ đang mở không thuộc về vật thể này -> Mở thẻ đầu tiên
+      if (!expandedUuid || !materials.has(expandedUuid)) {
+        setExpandedUuid(matArray[0].uuid)
+      }
+    }
+  }, [materials]) // Chỉ chạy lại khi danh sách vật liệu thay đổi (tức là khi click vật thể mới)
 
   const toggleExpand = (uuid: string) => {
     setExpandedUuid((prev) => (prev === uuid ? null : uuid))

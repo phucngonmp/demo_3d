@@ -20,7 +20,8 @@ const DEFAULT_STATE: ViewerState = {
   modelInfo: null,
   wireframe: false,
   showGrid: true,
-  exposure: 1.2,
+  exposure: 1.8,
+  cameraMode: 'orbit',
 }
 
 export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -274,6 +275,16 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     setState((prev) => ({ ...prev, exposure: value }))
   }, [])
 
+  const toggleCameraMode = useCallback(() => {
+    setState((prev) => {
+      const nextMode = prev.cameraMode === 'interior' ? 'orbit' : 'interior'
+      if (controllerRef.current && sceneRef.current) {
+        controllerRef.current.setMode(nextMode, currentModelRef.current || undefined, sceneRef.current.camera)
+      }
+      return { ...prev, cameraMode: nextMode }
+    })
+  }, [])
+
   const resetCamera = useCallback(() => {
     const controller = controllerRef.current
     const model = currentModelRef.current
@@ -347,9 +358,22 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     canvas.addEventListener('pointerdown', handlePointerDown)
     canvas.addEventListener('pointerup', handlePointerUp)
 
+    const handleDoubleClick = (event: MouseEvent) => {
+      if (controllerRef.current?.mode !== 'interior') return
+      const model = currentModelRef.current
+      if (!model) return
+
+      const hitPoint = scene.raycastPoint(event.clientX, event.clientY, model)
+      if (hitPoint) {
+        controllerRef.current.teleportTo(hitPoint.x, hitPoint.z)
+      }
+    }
+    canvas.addEventListener('dblclick', handleDoubleClick)
+
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown)
       canvas.removeEventListener('pointerup', handlePointerUp)
+      canvas.removeEventListener('dblclick', handleDoubleClick)
     }
   }, [selectNode])
 
@@ -471,6 +495,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     applyTextureUrl,
     toggleAutosave,
     changeExposure,
+    toggleCameraMode,
   }
 }
 

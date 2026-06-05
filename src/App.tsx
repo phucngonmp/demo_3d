@@ -52,6 +52,7 @@ function App() {
     applyTextureUrl,
     toggleAutosave,
     changeExposure,
+    toggleCameraMode,
   } = useModelViewer(containerRef)
 
   // ── Scope materials to selected object ───────────────────────────
@@ -151,6 +152,7 @@ function App() {
         hasModel={state.hasModel}
         autosave={autosave}
         exposure={state.exposure}
+        cameraMode={state.cameraMode}
         onOpenFile={loadFile}
         onToggleWireframe={toggleWireframe}
         onToggleGrid={toggleGrid}
@@ -158,6 +160,7 @@ function App() {
         onClearModel={clearModel}
         onToggleAutosave={toggleAutosave}
         onChangeExposure={changeExposure}
+        onToggleCameraMode={toggleCameraMode}
       />
 
       {/* ── Work area: left | center | right ── */}

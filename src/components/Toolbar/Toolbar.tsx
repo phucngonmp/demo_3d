@@ -8,6 +8,7 @@ interface ToolbarProps {
   hasModel: boolean
   autosave: boolean
   exposure: number
+  cameraMode: 'orbit' | 'interior'
   onOpenFile: (file: File) => void
   onToggleWireframe: () => void
   onToggleGrid: () => void
@@ -15,6 +16,7 @@ interface ToolbarProps {
   onClearModel: () => void
   onToggleAutosave: () => void
   onChangeExposure: (val: number) => void
+  onToggleCameraMode: () => void
 }
 
 export function Toolbar({
@@ -23,6 +25,7 @@ export function Toolbar({
   hasModel,
   autosave,
   exposure,
+  cameraMode,
   onOpenFile,
   onToggleWireframe,
   onToggleGrid,
@@ -30,6 +33,7 @@ export function Toolbar({
   onClearModel,
   onToggleAutosave,
   onChangeExposure,
+  onToggleCameraMode,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
@@ -140,6 +144,35 @@ export function Toolbar({
           Clear
         </button>
       )}
+
+      <div className={styles.divider} />
+
+      {/* Camera Mode Toggle */}
+      <button
+        id="btn-camera-mode"
+        className={styles.btnToggle}
+        onClick={onToggleCameraMode}
+        title={cameraMode === 'interior' ? "Switch to Orbit Mode" : "Switch to Interior Mode"}
+        disabled={!hasModel}
+      >
+        {cameraMode === 'interior' ? (
+          <>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+            Interior Mode
+          </>
+        ) : (
+          <>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              <path d="M2 12h20"/>
+            </svg>
+            Orbit Mode
+          </>
+        )}
+      </button>
 
       <div className={styles.divider} />
 
