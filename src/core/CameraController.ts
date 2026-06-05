@@ -3,8 +3,18 @@ import { Box3, Vector3, type PerspectiveCamera } from 'three'
 import type { Object3D } from 'three'
 import type { WebGLRenderer } from 'three'
 
+const STORAGE_KEY = 'glb-viewer:camera'
+
+interface CameraState {
+  px: number; py: number; pz: number  // camera position
+  tx: number; ty: number; tz: number  // orbit target
+  fileName: string                    // guard: only restore for same file
+}
+
 export class CameraController {
   controls: OrbitControls
+  private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private currentFileName = ''
 
   constructor(camera: PerspectiveCamera, renderer: WebGLRenderer) {
     this.controls = new OrbitControls(camera, renderer.domElement)
@@ -14,6 +24,13 @@ export class CameraController {
     this.controls.minDistance = 0.1
     this.controls.maxDistance = 500
     this.controls.maxPolarAngle = Math.PI / 1.9
+
+    // Auto-save on camera change (debounced 800 ms)
+    this.controls.addEventListener('change', () => {
+      if (!this.currentFileName) return
+      if (this.saveTimer) clearTimeout(this.saveTimer)
+      this.saveTimer = setTimeout(() => this.saveCameraState(), 800)
+    })
   }
 
   /** Call this each frame in the animation loop */
@@ -49,6 +66,53 @@ export class CameraController {
     this.controls.reset()
   }
 
+  /** Set the current file context so auto-save knows which file this camera belongs to */
+  setFileName(name: string): void {
+    this.currentFileName = name
+  }
+
+  /** Save current camera pose to localStorage */
+  saveCameraState(): void {
+    if (!this.currentFileName) return
+    const cam = this.controls.object as PerspectiveCamera
+    const state: CameraState = {
+      px: cam.position.x, py: cam.position.y, pz: cam.position.z,
+      tx: this.controls.target.x, ty: this.controls.target.y, tz: this.controls.target.z,
+      fileName: this.currentFileName,
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch { /* storage quota exceeded - ignore */ }
+  }
+
+  /**
+   * Restore camera pose from localStorage.
+   * Only applies if the stored state matches the given fileName.
+   * Returns true if restored.
+   */
+  restoreCameraState(fileName: string): boolean {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return false
+      const state: CameraState = JSON.parse(raw)
+      if (state.fileName !== fileName) return false
+
+      const cam = this.controls.object as PerspectiveCamera
+      cam.position.set(state.px, state.py, state.pz)
+      this.controls.target.set(state.tx, state.ty, state.tz)
+      this.controls.update()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Remove stored camera state (e.g. when model is cleared) */
+  clearCameraState(): void {
+    localStorage.removeItem(STORAGE_KEY)
+    this.currentFileName = ''
+  }
+
   enable(): void {
     this.controls.enabled = true
   }
@@ -58,6 +122,7 @@ export class CameraController {
   }
 
   dispose(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer)
     this.controls.dispose()
   }
 }

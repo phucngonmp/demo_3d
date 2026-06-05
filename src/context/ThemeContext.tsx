@@ -2,7 +2,9 @@ import { useState, useLayoutEffect, type ReactNode } from 'react'
 import { ThemeContext, type Theme } from './theme'
 
 function getInitialTheme(): Theme {
-  return localStorage.getItem('glb-theme') === 'light' ? 'light' : 'dark'
+  const stored = localStorage.getItem('glb-theme')
+  if (stored === 'dark' || stored === 'light') return stored
+  return 'light' // default
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

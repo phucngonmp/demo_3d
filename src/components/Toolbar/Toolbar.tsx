@@ -6,22 +6,26 @@ interface ToolbarProps {
   wireframe: boolean
   showGrid: boolean
   hasModel: boolean
+  autosave: boolean
   onOpenFile: (file: File) => void
   onToggleWireframe: () => void
   onToggleGrid: () => void
   onResetCamera: () => void
   onClearModel: () => void
+  onToggleAutosave: () => void
 }
 
 export function Toolbar({
   wireframe,
   showGrid,
   hasModel,
+  autosave,
   onOpenFile,
   onToggleWireframe,
   onToggleGrid,
   onResetCamera,
   onClearModel,
+  onToggleAutosave,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
@@ -134,6 +138,23 @@ export function Toolbar({
       )}
 
       <div className={styles.divider} />
+
+      {/* Autosave toggle */}
+      <button
+        id="btn-autosave"
+        className={`${styles.btnIcon} ${autosave ? styles.btnIconActive : ''}`}
+        onClick={onToggleAutosave}
+        title={autosave ? 'Autosave ON — click to disable' : 'Autosave OFF — click to enable'}
+        aria-label="Toggle autosave"
+        aria-pressed={autosave}
+      >
+        {/* Save / floppy icon */}
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
 
       {/* Theme toggle */}
       <button
