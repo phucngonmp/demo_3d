@@ -5,6 +5,8 @@ import {
   TextureLoader,
   Box3,
   Vector3,
+  RepeatWrapping,
+  SRGBColorSpace,
   type Object3D,
 } from 'three'
 import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem } from './types'
@@ -210,6 +212,7 @@ export class MaterialManager {
       hasMap: isStd && !!(mat as MeshStandardMaterial).map,
       mapPreviewUrl: undefined,
       textureUrl: mat.userData?.textureUrl,
+      textureScale: mat.userData?.textureScale ?? 4,
     }
   }
 
@@ -241,6 +244,16 @@ export class MaterialManager {
     mat.needsUpdate = true
   }
 
+  applyTextureScale(mat: AnyMaterial, scale: number): void {
+    if (mat instanceof MeshStandardMaterial && mat.map) {
+      mat.map.repeat.set(scale, scale)
+      mat.map.needsUpdate = true
+    }
+    mat.userData = mat.userData || {}
+    mat.userData.textureScale = scale
+    mat.needsUpdate = true
+  }
+
   /** Load an image from URL as a texture and apply it as the base color map */
   async applyTextureFromUrl(mat: AnyMaterial, url: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -248,9 +261,26 @@ export class MaterialManager {
       loader.load(
         url,
         (texture) => {
+          texture.colorSpace = SRGBColorSpace
+          texture.flipY = false
+          texture.wrapS = RepeatWrapping
+          texture.wrapT = RepeatWrapping
+
+          // Use standard explicit scaling instead of guessing mesh geometry
+          const scale = mat.userData?.textureScale ?? 4
+          texture.repeat.set(scale, scale)
+          texture.needsUpdate = true
+
           if (mat instanceof MeshStandardMaterial) {
             if (mat.map) mat.map.dispose()
             mat.map = texture
+
+            // Reset color to white so texture is not multiplied/darkened
+            mat.color.set('#ffffff')
+
+            // Disable vertex colors — they can override/mask the texture
+            mat.vertexColors = false
+
             mat.needsUpdate = true
             mat.userData = mat.userData || {}
             mat.userData.textureUrl = url

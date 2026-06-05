@@ -3,17 +3,13 @@ import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { InfoPanel } from './components/InfoPanel/InfoPanel'
 import { DropZone } from './components/DropZone/DropZone'
-import { ScenePanel } from './components/ScenePanel/ScenePanel'
 import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
 import { useModelViewer } from './hooks/useModelViewer'
 import type { SceneNode, MaterialData } from './core/types'
 import styles from './App.module.css'
 
 type RightTab = 'properties' | 'materials'
-type ResizeSide = 'left' | 'right'
 
-const LEFT_MIN_WIDTH = 180
-const LEFT_MAX_WIDTH = 460
 const RIGHT_MIN_WIDTH = 220
 const RIGHT_MAX_WIDTH = 520
 const RESIZING_CLASS = 'is-resizing-sidebars'
@@ -26,11 +22,8 @@ function clamp(value: number, min: number, max: number) {
 function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [scenePanelCollapsed, setScenePanelCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<RightTab>('properties')
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(260)
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300)
-  const leftSidebarWidthRef = useRef(leftSidebarWidth)
   const rightSidebarWidthRef = useRef(rightSidebarWidth)
   const resizeFrameRef = useRef<number | null>(null)
 
@@ -46,8 +39,6 @@ function App() {
     resetCamera,
     clearModel,
     dismissError,
-    selectNode,
-    toggleObjectVisibility,
     updateMaterial,
     applyTextureUrl,
     toggleAutosave,
@@ -100,15 +91,13 @@ function App() {
     if (resizeFrameRef.current !== null) return
 
     resizeFrameRef.current = requestAnimationFrame(() => {
-      setLeftSidebarWidth(leftSidebarWidthRef.current)
       setRightSidebarWidth(rightSidebarWidthRef.current)
       resizeFrameRef.current = null
     })
   }, [])
 
-  const startResize = useCallback((side: ResizeSide, event: React.PointerEvent<HTMLDivElement>) => {
+  const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const startX = event.clientX
-    const initialLeftWidth = leftSidebarWidthRef.current
     const initialRightWidth = rightSidebarWidthRef.current
 
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -116,11 +105,7 @@ function App() {
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX
-      if (side === 'left') {
-        leftSidebarWidthRef.current = clamp(initialLeftWidth + delta, LEFT_MIN_WIDTH, LEFT_MAX_WIDTH)
-      } else {
-        rightSidebarWidthRef.current = clamp(initialRightWidth - delta, RIGHT_MIN_WIDTH, RIGHT_MAX_WIDTH)
-      }
+      rightSidebarWidthRef.current = clamp(initialRightWidth - delta, RIGHT_MIN_WIDTH, RIGHT_MAX_WIDTH)
       scheduleResizeFrame()
     }
 
@@ -129,7 +114,6 @@ function App() {
         cancelAnimationFrame(resizeFrameRef.current)
         resizeFrameRef.current = null
       }
-      setLeftSidebarWidth(leftSidebarWidthRef.current)
       setRightSidebarWidth(rightSidebarWidthRef.current)
       document.body.classList.remove(RESIZING_CLASS)
       window.dispatchEvent(new Event(COMMIT_RESIZE_EVENT))
@@ -163,28 +147,8 @@ function App() {
         onToggleCameraMode={toggleCameraMode}
       />
 
-      {/* ── Work area: left | center | right ── */}
+      {/* ── Work area: center | right ── */}
       <div className={styles.workArea}>
-
-        {/* Left: collapsible Scene Panel */}
-        <ScenePanel
-          nodes={sceneNodes}
-          selectedUuid={selectedNodeUuid}
-          isCollapsed={scenePanelCollapsed}
-          width={leftSidebarWidth}
-          onToggleCollapse={() => setScenePanelCollapsed((v) => !v)}
-          onSelectNode={selectNode}
-          onToggleVisibility={toggleObjectVisibility}
-        />
-        {!scenePanelCollapsed && (
-          <div
-            className={`${styles.resizeHandle} ${styles.leftResizeHandle}`}
-            onPointerDown={(event) => startResize('left', event)}
-            role="separator"
-            aria-label="Resize scene panel"
-            aria-orientation="vertical"
-          />
-        )}
 
         {/* Center: 3D Viewport */}
         <div className={styles.viewportWrapper}>
@@ -225,7 +189,7 @@ function App() {
         {/* Right: tab switcher (Properties | Materials) */}
         <div
           className={`${styles.resizeHandle} ${styles.rightResizeHandle}`}
-          onPointerDown={(event) => startResize('right', event)}
+          onPointerDown={(event) => startResize(event)}
           role="separator"
           aria-label="Resize right sidebar"
           aria-orientation="vertical"

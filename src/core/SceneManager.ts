@@ -51,6 +51,7 @@ export class SceneManager {
       antialias: true,
       alpha: false,
       powerPreference: 'high-performance',
+      logarithmicDepthBuffer: true,
     })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
@@ -76,6 +77,8 @@ export class SceneManager {
     keyLight.castShadow = true
     keyLight.shadow.mapSize.width = 2048
     keyLight.shadow.mapSize.height = 2048
+    keyLight.shadow.bias = -0.0005
+    keyLight.shadow.normalBias = 0.02
     this.scene.add(keyLight)
 
     const fillLight = new DirectionalLight(0x8888ff, 0.4)

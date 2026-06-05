@@ -5,6 +5,19 @@ import styles from './MaterialEditor.module.css'
 const textureFiles = import.meta.glob('../../assets/textures/*.{jpg,png,webp,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 const textureUrls = Object.values(textureFiles)
 
+const KITCHEN_COLORS = [
+  { name: 'Pure White', hex: '#FFFFFF' },
+  { name: 'Matte Black', hex: '#222222' },
+  { name: 'Warm Cream', hex: '#FDFBF7' },
+  { name: 'Dove Gray', hex: '#E0E0E0' },
+  { name: 'Charcoal', hex: '#36454F' },
+  { name: 'Navy Blue', hex: '#1C2841' },
+  { name: 'Sage Green', hex: '#8A9A86' },
+  { name: 'Terracotta', hex: '#E2725B' },
+  { name: 'Wood Light', hex: '#D1BFAE' },
+  { name: 'Wood Dark', hex: '#5C4033' },
+]
+
 interface MaterialEditorProps {
   mat: MaterialData
   onUpdate: (patch: Partial<MaterialData>) => void
@@ -14,18 +27,23 @@ interface MaterialEditorProps {
 export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEditorProps) {
   return (
     <div className={styles.editor}>
-      {/* ─── Base Color ─── */}
-      <div className={styles.fieldRow}>
-        <label className={styles.fieldLabel}>Base Color</label>
-        <div className={styles.colorWrap}>
-          <input
-            type="color"
-            value={mat.color}
-            onChange={(e) => onUpdate({ color: e.target.value })}
-            className={styles.colorInput}
-            title="Base color"
-          />
-          <span className={styles.hexVal}>{mat.color}</span>
+      {/* ─── Base Color (Preset Swatches) ─── */}
+      <div className={styles.fieldRow} style={{ alignItems: 'flex-start' }}>
+        <label className={styles.fieldLabel} style={{ marginTop: '6px' }}>Colors</label>
+        <div className={styles.swatchGrid}>
+          {KITCHEN_COLORS.map((c) => {
+            const isActive = mat.color.toUpperCase() === c.hex.toUpperCase()
+            return (
+              <button
+                key={c.hex}
+                className={`${styles.colorSwatch} ${isActive ? styles.activeSwatch : ''}`}
+                style={{ backgroundColor: c.hex }}
+                title={c.name}
+                onClick={() => onUpdate({ color: c.hex })}
+                aria-label={`Select color ${c.name}`}
+              />
+            )
+          })}
         </div>
       </div>
 
@@ -42,6 +60,24 @@ export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEdi
               onClick={() => onApplyTextureUrl(url)}
             />
           ))}
+        </div>
+      </div>
+
+      {/* ─── Texture Scale ─── */}
+      <div className={styles.fieldRow}>
+        <label className={styles.fieldLabel}>Tex Scale</label>
+        <div className={styles.sliderWrap}>
+          <input
+            type="range"
+            min="1"
+            max="20"
+            step="1"
+            value={mat.textureScale ?? 4}
+            onChange={(e) => onUpdate({ textureScale: parseFloat(e.target.value) })}
+            className={styles.slider}
+            title="Texture Tiling Scale"
+          />
+          <span className={styles.sliderValue}>x{mat.textureScale ?? 4}</span>
         </div>
       </div>
     </div>

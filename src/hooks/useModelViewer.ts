@@ -11,7 +11,7 @@ import {
   type MaterialOverride,
 } from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
-import type { ViewerState, ModelInfo, SceneNode, MaterialData } from '../core/types'
+import type { ViewerState, SceneNode, MaterialData } from '../core/types'
 
 const DEFAULT_STATE: ViewerState = {
   isLoading: false,
@@ -47,6 +47,17 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   })
   const autosaveRef = useRef(autosave)
   const currentFileNameRef = useRef('')
+
+  // Helper: build a stable mesh path key (ancestor chain) for override storage
+  const getMeshPath = (obj: Object3D): string => {
+    let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
+    let curr = obj.parent
+    while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
+      path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
+      curr = curr.parent
+    }
+    return path
+  }
 
   const { theme } = useTheme()
   const themeRef = useRef(theme)
@@ -109,7 +120,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (file && loadModelRef.current) {
         loadModelRef.current(file)
       } else if (loadModelRef.current) {
-        const defaultName = 'comfy_living_interior_-_cgt_345_final.glb'
+        const defaultName = 'italian_kitchen.glb'
         const defaultUrl = `${import.meta.env.BASE_URL}${defaultName}`
         loadModelRef.current({ url: defaultUrl, name: defaultName })
       }
@@ -126,7 +137,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     if (!loader || !scene || !controller || !manager) return
 
     const isFile = source instanceof File
-    const name = isFile ? source.name : source.name
+    const name = source instanceof File ? source.name : source.name
 
     const ext = name.split('.').pop()?.toLowerCase()
     if (ext !== 'glb' && ext !== 'gltf') {
@@ -206,20 +217,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       // Restore material overrides (autosave must be ON at time of saving)
       const overrides = loadOverrides(name)
       if (overrides && autosaveRef.current && object) {
-        // Hàm lấy đường dẫn gia phả của object để map chính xác sau khi F5
-        const getPath = (obj: Object3D) => {
-          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
-          let curr = obj.parent
-          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
-            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
-            curr = curr.parent
-          }
-          return path
-        }
-
         object.traverse((child) => {
           if (child instanceof Mesh && child.material) {
-            const path = getPath(child)
+            const path = getMeshPath(child)
             const o = overrides[path]
             if (o) {
               // Clone material để đảm bảo không dính líu tới tường khác
@@ -233,6 +233,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
                 if (o.metalness !== undefined) mat.metalness = o.metalness
                 if (o.emissive) mat.emissive.set(o.emissive)
                 if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
+                if (o.textureScale !== undefined) manager.applyTextureScale(mat, o.textureScale)
                 if (o.textureUrl) manager.applyTextureFromUrl(mat, o.textureUrl)
                 mat.needsUpdate = true
               }
@@ -420,14 +421,17 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
           : materialObjectMapRef.current.get(uuid)
       if (!mat || !manager) return
 
-      if (patch.color !== undefined) manager.applyColor(mat, patch.color)
-      if (patch.roughness !== undefined) manager.applyRoughness(mat, patch.roughness)
-      if (patch.metalness !== undefined) manager.applyMetalness(mat, patch.metalness)
-      if (patch.emissive !== undefined) manager.applyEmissive(mat, patch.emissive)
-      if (patch.opacity !== undefined) manager.applyOpacity(mat, patch.opacity)
+      if (mat) {
+        if (patch.color) manager.applyColor(mat, patch.color)
+        if (patch.roughness !== undefined) manager.applyRoughness(mat, patch.roughness)
+        if (patch.metalness !== undefined) manager.applyMetalness(mat, patch.metalness)
+        if (patch.emissive) manager.applyEmissive(mat, patch.emissive)
+        if (patch.opacity !== undefined) manager.applyOpacity(mat, patch.opacity)
+        if (patch.textureScale !== undefined) manager.applyTextureScale(mat, patch.textureScale)
 
-      mat.userData = mat.userData || {}
-      mat.userData.isModified = true
+        mat.userData = mat.userData || {}
+        mat.userData.isModified = true
+      }
 
       if (model) {
         materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
@@ -438,29 +442,20 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       // Autosave material overrides (lưu theo gia phả vật thể thay vì tên vật liệu)
       if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
-        const getPath = (obj: Object3D) => {
-          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
-          let curr = obj.parent
-          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
-            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
-            curr = curr.parent
-          }
-          return path
-        }
-
         model.traverse((child) => {
           if (child instanceof Mesh) {
             const mat = Array.isArray(child.material) ? child.material[0] : child.material
             if (mat && mat.userData?.isModified && mat instanceof MeshStandardMaterial) {
-              const path = getPath(child)
+              const path = getMeshPath(child)
               overrides[path] = {
                 color: '#' + mat.color.getHexString(),
                 roughness: mat.roughness,
                 metalness: mat.metalness,
                 emissive: '#' + mat.emissive.getHexString(),
                 opacity: mat.opacity,
-                textureUrl: mat.userData?.textureUrl,
               }
+              if (mat.userData?.textureUrl) overrides[path].textureUrl = mat.userData.textureUrl
+              if (mat.userData?.textureScale !== undefined) overrides[path].textureScale = mat.userData.textureScale
             }
           }
         })
@@ -496,29 +491,20 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       // Autosave material overrides (lưu theo gia phả vật thể)
       if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
-        const getPath = (obj: Object3D) => {
-          let path = obj.name || (obj.parent ? obj.parent.children.indexOf(obj).toString() : '')
-          let curr = obj.parent
-          while (curr && curr.type !== 'Scene' && curr.type !== 'Group') {
-            path = (curr.name || (curr.parent ? curr.parent.children.indexOf(curr).toString() : '')) + '/' + path
-            curr = curr.parent
-          }
-          return path
-        }
-
         model.traverse((child) => {
           if (child instanceof Mesh) {
             const m = Array.isArray(child.material) ? child.material[0] : child.material
             if (m && m.userData?.isModified && m instanceof MeshStandardMaterial) {
-              const path = getPath(child)
+              const path = getMeshPath(child)
               overrides[path] = {
                 color: '#' + m.color.getHexString(),
                 roughness: m.roughness,
                 metalness: m.metalness,
                 emissive: '#' + m.emissive.getHexString(),
                 opacity: m.opacity,
-                textureUrl: m.userData?.textureUrl, // Saved in manager
               }
+              if (m.userData?.textureUrl) overrides[path].textureUrl = m.userData.textureUrl
+              if (m.userData?.textureScale !== undefined) overrides[path].textureScale = m.userData.textureScale
             }
           }
         })
@@ -550,5 +536,3 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     toggleCameraMode,
   }
 }
-
-export type { ModelInfo, ViewerState, SceneNode, MaterialData }

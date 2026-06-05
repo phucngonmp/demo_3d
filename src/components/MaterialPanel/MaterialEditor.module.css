@@ -31,39 +31,35 @@
   flex-shrink: 0;
 }
 
-/* ─── Color input ─── */
-.colorWrap {
-  display: flex;
-  align-items: center;
+/* ─── Preset Swatches ─── */
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
   gap: var(--space-2);
   flex: 1;
 }
 
-.colorInput {
-  width: 28px;
-  height: 22px;
-  border: 1px solid var(--border-bright);
+.colorSwatch {
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: var(--radius-sm);
-  padding: 0;
+  border: 1px solid var(--border-bright);
   cursor: pointer;
-  background: none;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.colorInput::-webkit-color-swatch-wrapper {
   padding: 0;
+  transition: transform 0.1s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.colorInput::-webkit-color-swatch {
-  border: none;
-  border-radius: 3px;
+.colorSwatch:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  z-index: 1;
 }
 
-.hexVal {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
+.colorSwatch.activeSwatch {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+  transform: scale(1.1);
+  z-index: 1;
 }
 
 /* ─── Slider ─── */

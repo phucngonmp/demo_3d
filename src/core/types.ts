@@ -70,5 +70,6 @@ export interface MaterialData {
   hasMap: boolean
   mapPreviewUrl?: string
   textureUrl?: string   // URL to the applied gallery texture
+  textureScale?: number // Texture tiling multiplier
 }
 

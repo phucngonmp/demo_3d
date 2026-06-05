@@ -97,6 +97,7 @@ export interface MaterialOverride {
   emissive?: string
   opacity?: number
   textureUrl?: string
+  textureScale?: number
 }
 
 
