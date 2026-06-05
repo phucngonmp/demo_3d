@@ -44,6 +44,23 @@ export class ModelLoader {
     })
   }
 
+  loadFromUrl(url: string, fileName: string): Promise<LoadResult> {
+    return new Promise((resolve, reject) => {
+      this.loader.load(
+        url,
+        (gltf) => {
+          const object = gltf.scene
+          const info = this.collectInfo(fileName, object)
+          resolve({ object, info })
+        },
+        undefined,
+        (error) => {
+          reject(error)
+        }
+      )
+    })
+  }
+
   private collectInfo(fileName: string, object: Object3D): ModelInfo {
     let triangleCount = 0
     let vertexCount = 0

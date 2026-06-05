@@ -97,21 +97,25 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneRef.current?.setTheme(theme)
   }, [theme])
 
-  // ── Auto-restore last model on mount ─────────────────────────────
-  // loadFileRef keeps the latest loadFile fn without adding it as a dep
-  const loadFileRef = useRef<((file: File) => Promise<void>) | null>(null)
+  // ── Auto-restore last model or load default model on mount ──────────
+  // loadModelRef keeps the latest loadModel fn without adding it as a dep
+  const loadModelRef = useRef<((source: File | { url: string; name: string }) => Promise<void>) | null>(null)
 
   useEffect(() => {
     if (!isReady) return
     loadStoredFile().then((file) => {
-      if (file && loadFileRef.current) {
-        loadFileRef.current(file)
+      if (file && loadModelRef.current) {
+        loadModelRef.current(file)
+      } else if (loadModelRef.current) {
+        const defaultName = 'comfy_living_interior_-_cgt_345_final.glb'
+        const defaultUrl = `${import.meta.env.BASE_URL}${defaultName}`
+        loadModelRef.current({ url: defaultUrl, name: defaultName })
       }
     })
   }, [isReady])
 
-  // ── Load a .glb / .gltf file ─────────────────────────────────────
-  const loadFile = useCallback(async (file: File) => {
+  // ── Core Load Model Function ──────────────────────────────────────
+  const loadModel = useCallback(async (source: File | { url: string; name: string }) => {
     const loader = loaderRef.current
     const scene = sceneRef.current
     const controller = controllerRef.current
@@ -119,7 +123,10 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
     if (!loader || !scene || !controller || !manager) return
 
-    const ext = file.name.split('.').pop()?.toLowerCase()
+    const isFile = source instanceof File
+    const name = isFile ? source.name : source.name
+
+    const ext = name.split('.').pop()?.toLowerCase()
     if (ext !== 'glb' && ext !== 'gltf') {
       setState((prev) => ({ ...prev, error: 'Only .glb and .gltf files are supported.' }))
       return
@@ -134,16 +141,19 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         currentModelRef.current = null
       }
 
-      const { object, info } = await loader.loadFromFile(file)
+      const { object, info } = isFile
+        ? await loader.loadFromFile(source)
+        : await loader.loadFromUrl(source.url, source.name)
+
       scene.scene.add(object)
       currentModelRef.current = object
 
       // Tell controller which file we're viewing (needed for auto-save key)
-      controller.setFileName(file.name)
-      currentFileNameRef.current = file.name
+      controller.setFileName(name)
+      currentFileNameRef.current = name
 
       // Try restoring saved camera pose for this file; fall back to auto-fit
-      const restored = controller.restoreCameraState(file.name)
+      const restored = controller.restoreCameraState(name)
       if (!restored) {
         controller.fitToObject(object, scene.camera)
       }
@@ -155,7 +165,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       objectMapRef.current = manager.buildObjectMap(object)
       materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
 
-      console.groupCollapsed(`[GLB Viewer] Mesh list: ${file.name}`)
+      console.groupCollapsed(`[GLB Viewer] Mesh list: ${name}`)
       console.table(
         meshInventory.map((mesh) => ({
           category: mesh.category,
@@ -186,11 +196,13 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       // Reapply wireframe if it was on
       if (state.wireframe) loader.setWireframe(object, true)
 
-      // Persist to IndexedDB for auto-restore after refresh
-      saveFile(file)
+      // Only persist to IndexedDB if it was loaded from a user-uploaded file
+      if (isFile) {
+        saveFile(source)
+      }
 
       // Restore material overrides (autosave must be ON at time of saving)
-      const overrides = loadOverrides(file.name)
+      const overrides = loadOverrides(name)
       if (overrides && autosaveRef.current) {
         const matMap = materialObjectMapRef.current
         matMap.forEach((mat) => {
@@ -216,13 +228,20 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: 'Failed to load model. Please check the file format.',
+        error: isFile
+          ? 'Failed to load model. Please check the file format.'
+          : 'Failed to load default model.',
       }))
     }
   }, [state.wireframe])
 
+  const loadFile = useCallback(
+    (file: File) => loadModel(file),
+    [loadModel]
+  )
+
   // Keep ref in sync so auto-restore always calls the latest version
-  loadFileRef.current = loadFile
+  loadModelRef.current = loadModel
 
   // ── Scene controls ────────────────────────────────────────────────
   const toggleWireframe = useCallback(() => {
