@@ -1,6 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import type { Material, Object3D } from 'three'
-import { MeshStandardMaterial, Mesh } from 'three'
+import {
+  Material,
+  type Object3D,
+  MeshStandardMaterial,
+  Mesh,
+} from 'three'
 import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
 import { CameraController } from '../core/CameraController'
@@ -41,12 +45,18 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const [materialMap, setMaterialMap] = useState<Map<string, MaterialData>>(new Map())
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
+  // Undo stack: each entry is a snapshot of cloned materials for the model
+  const [undoStack, setUndoStack] = useState<Array<Record<string, Material>>>([])
+  const undoStackRef = useRef(undoStack)
   const [autosave, setAutosave] = useState<boolean>(() => {
     const stored = localStorage.getItem('glb-viewer:autosave')
     return stored === null ? true : stored === 'true'
   })
   const autosaveRef = useRef(autosave)
   const currentFileNameRef = useRef('')
+
+  // Keep undoStackRef in sync
+  useEffect(() => { undoStackRef.current = undoStack }, [undoStack])
 
   // Helper: build a stable mesh path key (ancestor chain) for override storage
   const getMeshPath = (obj: Object3D): string => {
@@ -162,14 +172,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       currentModelRef.current = object
 
       // Tell controller which file we're viewing (needed for auto-save key)
-      controller.setFileName(name)
-      currentFileNameRef.current = name
-
       // Try restoring saved camera pose for this file; fall back to auto-fit
-      const restored = controller.restoreCameraState(name)
-      if (!restored) {
-        controller.fitToObject(object, scene.camera)
-      }
+      controller.fitToObject(object, scene.camera)
 
       // Build scene tree + material data
       const nodes = manager.extractSceneTree(object)
@@ -330,7 +334,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     clearStoredFile()
     clearOverrides()
     currentFileNameRef.current = ''
-    controllerRef.current?.clearCameraState()
     setState((prev) => ({
       ...prev,
       hasModel: false,
@@ -408,8 +411,27 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   }, [selectedNodeUuid])
 
   // ── Material Panel actions ────────────────────────────────────────
+
+  /** Snapshot current material state into the undo stack */
+  const pushUndo = useCallback(() => {
+    const model = currentModelRef.current
+    if (!model) return
+    const snapshot: Record<string, Material> = {}
+    model.traverse((child) => {
+      if (child instanceof Mesh) {
+        const m = Array.isArray(child.material) ? child.material[0] : child.material
+        if (m instanceof Material) {
+          const path = getMeshPath(child)
+          snapshot[path] = m.clone()
+        }
+      }
+    })
+    setUndoStack((prev) => [...prev.slice(-19), snapshot]) // keep last 20
+  }, [])
+
   const updateMaterial = useCallback(
-    (uuid: string, patch: Partial<MaterialData>) => {
+    (uuid: string, patch: Partial<MaterialData>, skipUndo: boolean = false) => {
+      if (!skipUndo) pushUndo()
       const manager = materialManagerRef.current
       const model = currentModelRef.current
       const selectedObject = selectedNodeUuid
@@ -439,7 +461,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         setMaterialMap(manager.extractMaterials(model))
       }
 
-      // Autosave material overrides (lưu theo gia phả vật thể thay vì tên vật liệu)
+      // Autosave
       if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
         model.traverse((child) => {
@@ -462,10 +484,11 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         saveOverrides(currentFileNameRef.current, overrides)
       }
     },
-    [selectedNodeUuid]
+    [selectedNodeUuid, pushUndo]
   )
 
   const applyTextureUrl = useCallback(async (matUuid: string, url: string) => {
+    pushUndo()
     const manager = materialManagerRef.current
     const model = currentModelRef.current
     const selectedObject = selectedNodeUuid
@@ -488,7 +511,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         setMaterialMap(manager.extractMaterials(model))
       }
 
-      // Autosave material overrides (lưu theo gia phả vật thể)
+      // Autosave
       if (autosaveRef.current && currentFileNameRef.current && model) {
         const overrides: Record<string, MaterialOverride> = {}
         model.traverse((child) => {
@@ -513,7 +536,102 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     } catch {
       setState((prev) => ({ ...prev, error: 'Failed to load texture.' }))
     }
-  }, [selectedNodeUuid])
+  }, [selectedNodeUuid, pushUndo])
+
+  /** Remove texture from a material and restore its color to white */
+  const resetTexture = useCallback((matUuid: string) => {
+    pushUndo()
+    const manager = materialManagerRef.current
+    const model = currentModelRef.current
+    const selectedObject = selectedNodeUuid
+      ? objectMapRef.current.get(selectedNodeUuid) ?? null
+      : null
+    const mat =
+      model && selectedObject
+        ? manager?.isolateMaterialToObject(model, selectedObject, matUuid)
+        : materialObjectMapRef.current.get(matUuid)
+    if (!mat || !(mat instanceof MeshStandardMaterial)) return
+
+    if (mat.map) { mat.map.dispose(); mat.map = null }
+    mat.color.set('#ffffff')
+    mat.userData = mat.userData || {}
+    delete mat.userData.textureUrl
+    delete mat.userData.textureScale
+    mat.userData.isModified = true
+    mat.needsUpdate = true
+
+    if (model) {
+      materialObjectMapRef.current = manager!.buildMaterialObjectMap(model)
+      setSceneNodes(manager!.extractSceneTree(model))
+      setMaterialMap(manager!.extractMaterials(model))
+    }
+  }, [selectedNodeUuid, pushUndo])
+
+  /** Restore the previous snapshot from the undo stack */
+  const undoMaterial = useCallback(() => {
+    const model = currentModelRef.current
+    const manager = materialManagerRef.current
+    const stack = undoStackRef.current
+    if (!model || !manager || stack.length === 0) return
+
+    const prev = stack[stack.length - 1]
+    setUndoStack((s) => s.slice(0, -1))
+
+    model.traverse((child) => {
+      if (!(child instanceof Mesh)) return
+      const path = getMeshPath(child)
+      const o = prev[path]
+      if (!o) return
+      
+      // Khôi phục lại material y nguyên như snapshot bằng cách clone()
+      const newMat = o.clone()
+      if (Array.isArray(child.material)) {
+        child.material = [newMat, ...child.material.slice(1)]
+      } else {
+        child.material = newMat
+      }
+    })
+
+    materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
+    setSceneNodes(manager.extractSceneTree(model))
+    setMaterialMap(manager.extractMaterials(model))
+
+    // Lưu lại LocalStorage ngay lập tức sau khi Undo
+    if (autosaveRef.current && currentFileNameRef.current) {
+      const overrides: Record<string, MaterialOverride> = {}
+      model.traverse((child) => {
+        if (child instanceof Mesh) {
+          const m = Array.isArray(child.material) ? child.material[0] : child.material
+          if (m && m.userData?.isModified && m instanceof MeshStandardMaterial) {
+            const path = getMeshPath(child)
+            overrides[path] = {
+              color: '#' + m.color.getHexString(),
+              roughness: m.roughness,
+              metalness: m.metalness,
+              emissive: '#' + m.emissive.getHexString(),
+              opacity: m.opacity,
+            }
+            if (m.userData?.textureUrl) overrides[path].textureUrl = m.userData.textureUrl
+            if (m.userData?.textureScale !== undefined) overrides[path].textureScale = m.userData.textureScale
+          }
+        }
+      })
+      saveOverrides(currentFileNameRef.current, overrides)
+    }
+  }, [])
+
+  // ── Keyboard Shortcuts ──────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Support Ctrl+Z (Windows) and Cmd+Z (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault() // prevent browser native undo if any
+        undoMaterial()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [undoMaterial])
 
   return {
     state,
@@ -521,6 +639,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     materialMap,
     selectedNodeUuid,
     autosave,
+    undoStack,
     loadFile,
     toggleWireframe,
     toggleGrid,
@@ -529,8 +648,11 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     dismissError,
     selectNode,
     toggleObjectVisibility,
+    pushUndo,
     updateMaterial,
     applyTextureUrl,
+    resetTexture,
+    undoMaterial,
     toggleAutosave,
     changeExposure,
     toggleCameraMode,

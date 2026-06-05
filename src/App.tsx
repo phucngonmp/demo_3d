@@ -33,6 +33,7 @@ function App() {
     materialMap,
     selectedNodeUuid,
     autosave,
+    undoStack,
     loadFile,
     toggleWireframe,
     toggleGrid,
@@ -41,6 +42,9 @@ function App() {
     dismissError,
     updateMaterial,
     applyTextureUrl,
+    resetTexture,
+    undoMaterial,
+    pushUndo,
     toggleAutosave,
     changeExposure,
     toggleCameraMode,
@@ -230,8 +234,12 @@ function App() {
               <MaterialPanel
                 materials={scopedMaterialMap}
                 hasSelection={!!selectedNodeUuid}
+                canUndo={undoStack.length > 0}
                 onUpdateMaterial={updateMaterial}
                 onApplyTextureUrl={applyTextureUrl}
+                onResetTexture={resetTexture}
+                onUndo={undoMaterial}
+                onPushUndo={pushUndo}
               />
             )}
           </div>

@@ -6,15 +6,23 @@ import styles from './MaterialPanel.module.css'
 interface MaterialPanelProps {
   materials: Map<string, MaterialData>
   hasSelection: boolean
-  onUpdateMaterial: (uuid: string, patch: Partial<MaterialData>) => void
+  canUndo: boolean
+  onUpdateMaterial: (uuid: string, patch: Partial<MaterialData>, skipUndo?: boolean) => void
   onApplyTextureUrl: (matUuid: string, url: string) => Promise<void>
+  onResetTexture: (matUuid: string) => void
+  onUndo: () => void
+  onPushUndo: () => void
 }
 
 export function MaterialPanel({
   materials,
   hasSelection,
+  canUndo,
   onUpdateMaterial,
   onApplyTextureUrl,
+  onResetTexture,
+  onUndo,
+  onPushUndo,
 }: MaterialPanelProps) {
   const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
   const matArray = Array.from(materials.values())
@@ -67,6 +75,18 @@ export function MaterialPanel({
 
   return (
     <div className={styles.list}>
+      {/* ─── Global Material Actions ─── */}
+      <div className={styles.panelHeader}>
+        <button 
+          className={styles.undoBtn} 
+          onClick={onUndo} 
+          disabled={!canUndo}
+          title="Undo last material change"
+        >
+          ↺ Undo Change
+        </button>
+      </div>
+
       {matArray.map((mat) => {
         const isExpanded = expandedUuid === mat.uuid
         return (
@@ -117,8 +137,10 @@ export function MaterialPanel({
             {isExpanded && (
               <MaterialEditor
                 mat={mat}
-                onUpdate={(patch) => onUpdateMaterial(mat.uuid, patch)}
+                onUpdate={(patch, skipUndo) => onUpdateMaterial(mat.uuid, patch, skipUndo)}
                 onApplyTextureUrl={(url) => onApplyTextureUrl(mat.uuid, url)}
+                onResetTexture={() => onResetTexture(mat.uuid)}
+                onPushUndo={onPushUndo}
               />
             )}
           </div>

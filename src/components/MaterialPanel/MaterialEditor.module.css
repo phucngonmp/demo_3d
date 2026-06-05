@@ -8,6 +8,28 @@
   animation: slideDown 150ms ease;
 }
 
+.galleryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.clearTexBtn {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.clearTexBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }

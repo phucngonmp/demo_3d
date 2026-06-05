@@ -20,11 +20,13 @@ const KITCHEN_COLORS = [
 
 interface MaterialEditorProps {
   mat: MaterialData
-  onUpdate: (patch: Partial<MaterialData>) => void
+  onUpdate: (patch: Partial<MaterialData>, skipUndo?: boolean) => void
   onApplyTextureUrl: (url: string) => void
+  onResetTexture: () => void
+  onPushUndo: () => void
 }
 
-export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEditorProps) {
+export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl, onResetTexture, onPushUndo }: MaterialEditorProps) {
   return (
     <div className={styles.editor}>
       {/* ─── Base Color (Preset Swatches) ─── */}
@@ -49,13 +51,20 @@ export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEdi
 
       {/* ─── Texture Gallery ─── */}
       <div className={styles.gallery}>
-        <label className={styles.fieldLabel}>Textures</label>
+        <div className={styles.galleryHeader}>
+          <label className={styles.fieldLabel}>Textures</label>
+          {mat.textureUrl && (
+            <button className={styles.clearTexBtn} onClick={onResetTexture}>
+              ✕ Clear Texture
+            </button>
+          )}
+        </div>
         <div className={styles.grid}>
           {textureUrls.map((url, i) => (
-            <img 
-              key={i} 
-              src={url} 
-              alt={`Texture ${i}`} 
+            <img
+              key={i}
+              src={url}
+              alt={`Texture ${i}`}
               className={`${styles.thumbnail} ${mat.textureUrl === url ? styles.active : ''}`}
               onClick={() => onApplyTextureUrl(url)}
             />
@@ -69,11 +78,12 @@ export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEdi
         <div className={styles.sliderWrap}>
           <input
             type="range"
-            min="1"
-            max="20"
-            step="1"
-            value={mat.textureScale ?? 4}
-            onChange={(e) => onUpdate({ textureScale: parseFloat(e.target.value) })}
+            min="0.25"
+            max="10"
+            step="0.25"
+            value={mat.textureScale ?? 2}
+            onPointerDown={onPushUndo}
+            onChange={(e) => onUpdate({ textureScale: parseFloat(e.target.value) }, true)}
             className={styles.slider}
             title="Texture Tiling Scale"
           />
@@ -83,4 +93,3 @@ export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl }: MaterialEdi
     </div>
   )
 }
-

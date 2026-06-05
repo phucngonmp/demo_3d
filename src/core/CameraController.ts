@@ -3,14 +3,6 @@ import { Box3, Vector3, type PerspectiveCamera } from 'three'
 import type { Object3D } from 'three'
 import type { WebGLRenderer } from 'three'
 
-const STORAGE_KEY = 'glb-viewer:camera'
-
-interface CameraState {
-  px: number; py: number; pz: number  // camera position
-  tx: number; ty: number; tz: number  // orbit target
-  fileName: string                    // guard: only restore for same file
-}
-
 export type CameraMode = 'orbit' | 'interior'
 
 export class CameraController {
@@ -20,7 +12,6 @@ export class CameraController {
   private keys = { forward: false, backward: false, left: false, right: false }
   private cleanupListeners: (() => void) | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
-  private currentFileName = ''
   private lastTime = performance.now()
 
   constructor(camera: PerspectiveCamera, renderer: WebGLRenderer) {
@@ -31,16 +22,9 @@ export class CameraController {
     this.controls.enableZoom = true // Mặc định Orbit
     this.controls.enablePan = true
 
-    this.controls.minDistance = 0.01
-    this.controls.maxDistance = 500
+    this.controls.minDistance = 0.001
+    this.controls.maxDistance = Infinity
     this.controls.maxPolarAngle = Math.PI / 1.9
-
-    // Auto-save on camera change (debounced 800 ms)
-    this.controls.addEventListener('change', () => {
-      if (!this.currentFileName) return
-      if (this.saveTimer) clearTimeout(this.saveTimer)
-      this.saveTimer = setTimeout(() => this.saveCameraState(), 800)
-    })
 
     // Keyboard movement listeners
     const onKeyDown = (e: KeyboardEvent) => {
@@ -116,8 +100,11 @@ export class CameraController {
     const right = new Vector3()
     right.crossVectors(forward, new Vector3(0, 1, 0)).normalize()
 
-    // Tốc độ cố định vĩnh viễn (0.5 đơn vị mỗi giây)
-    const speed = 0.5 
+    // Tốc độ di chuyển tỉ lệ thuận với kích thước phòng (đi ngang phòng mất khoảng 5 giây)
+    const size = new Vector3()
+    this.boundingBox.getSize(size)
+    const maxDim = Math.max(size.x, size.y, size.z) || 2
+    const speed = Math.max(0.5, maxDim * 0.2)
     const dist = speed * delta
 
     // Tính tọa độ mới
@@ -173,27 +160,30 @@ export class CameraController {
       this.controls.update()
 
       // Hạ siêu nhỏ mặt phẳng cắt (Near Clipping Plane) để không bị tàng hình sàn nhà
-      camera.near = 0.001
-      camera.far = 1000
+      camera.near = 0.01
+      camera.far = 100000
     } else {
       // Orbit (bao quát bên ngoài)
       const size = new Vector3()
       box.getSize(size)
-      const maxDim = Math.max(size.x, size.y, size.z)
+      const maxDim = Math.max(size.x, size.y, size.z) || 1
       const fov = camera.fov * (Math.PI / 180)
       let cameraDistance = Math.abs(maxDim / (2 * Math.tan(fov / 2)))
       cameraDistance *= 1.8 // padding
 
       const direction = camera.position.clone().sub(this.controls.target).normalize()
-      // Nếu direction bị [0,0,0], fallback về Z
       if (direction.lengthSq() < 0.001) direction.set(0, 0, 1)
+
+      // Update limits based on actual scale so we can zoom properly on huge/tiny objects
+      this.controls.minDistance = maxDim * 0.001
+      this.controls.maxDistance = maxDim * 20
 
       camera.position.copy(center).addScaledVector(direction, cameraDistance)
       this.controls.target.copy(center)
       this.controls.update()
 
-      camera.near = maxDim * 0.001
-      camera.far = maxDim * 100
+      camera.near = Math.min(0.1, maxDim * 0.005)
+      camera.far = Math.max(100000, maxDim * 10000)
       camera.updateProjectionMatrix()
     }
     camera.updateProjectionMatrix()
@@ -201,53 +191,6 @@ export class CameraController {
 
   reset(): void {
     this.controls.reset()
-  }
-
-  /** Set the current file context so auto-save knows which file this camera belongs to */
-  setFileName(name: string): void {
-    this.currentFileName = name
-  }
-
-  /** Save current camera pose to localStorage */
-  saveCameraState(): void {
-    if (!this.currentFileName) return
-    const cam = this.controls.object as PerspectiveCamera
-    const state: CameraState = {
-      px: cam.position.x, py: cam.position.y, pz: cam.position.z,
-      tx: this.controls.target.x, ty: this.controls.target.y, tz: this.controls.target.z,
-      fileName: this.currentFileName,
-    }
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch { /* storage quota exceeded - ignore */ }
-  }
-
-  /**
-   * Restore camera pose from localStorage.
-   * Only applies if the stored state matches the given fileName.
-   * Returns true if restored.
-   */
-  restoreCameraState(fileName: string): boolean {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return false
-      const state: CameraState = JSON.parse(raw)
-      if (state.fileName !== fileName) return false
-
-      const cam = this.controls.object as PerspectiveCamera
-      cam.position.set(state.px, state.py, state.pz)
-      this.controls.target.set(state.tx, state.ty, state.tz)
-      this.controls.update()
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  /** Remove stored camera state (e.g. when model is cleared) */
-  clearCameraState(): void {
-    localStorage.removeItem(STORAGE_KEY)
-    this.currentFileName = ''
   }
 
   enable(): void {

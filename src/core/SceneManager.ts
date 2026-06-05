@@ -16,8 +16,10 @@ import {
   Raycaster,
   Vector2,
   Vector3,
+  PMREMGenerator,
   type Object3D,
 } from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 
 export class SceneManager {
   renderer: WebGLRenderer
@@ -58,7 +60,7 @@ export class SceneManager {
     this.renderer.shadowMap.type = PCFSoftShadowMap
     this.renderer.setClearColor(new Color('#0d0d14'))
     this.renderer.toneMapping = 2 // ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.2
+    this.renderer.toneMappingExposure = 1.5
 
     // Scene
     this.scene = new Scene()
@@ -68,11 +70,17 @@ export class SceneManager {
     this.camera = new PerspectiveCamera(50, 1, 0.01, 1000)
     this.camera.position.set(3, 2, 5)
 
-    // Lighting — 3-point setup
-    const ambient = new AmbientLight(0xffffff, 0.4)
+    // Environment Map (Giả lập phòng chuẩn PBR giống Three.js Editor)
+    const pmremGenerator = new PMREMGenerator(this.renderer)
+    pmremGenerator.compileEquirectangularShader()
+    this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture
+    
+    // Ambient light as base
+    const ambient = new AmbientLight(0xffffff, 0.3)
     this.scene.add(ambient)
 
-    const keyLight = new DirectionalLight(0xffffff, 1.2)
+    // Key Light for casting shadows
+    const keyLight = new DirectionalLight(0xffffff, 1.0)
     keyLight.position.set(5, 8, 5)
     keyLight.castShadow = true
     keyLight.shadow.mapSize.width = 2048
@@ -80,14 +88,6 @@ export class SceneManager {
     keyLight.shadow.bias = -0.0005
     keyLight.shadow.normalBias = 0.02
     this.scene.add(keyLight)
-
-    const fillLight = new DirectionalLight(0x8888ff, 0.4)
-    fillLight.position.set(-5, 2, -3)
-    this.scene.add(fillLight)
-
-    const rimLight = new DirectionalLight(0xffffff, 0.3)
-    rimLight.position.set(0, -5, -5)
-    this.scene.add(rimLight)
 
     // Grid (dark mode default)
     this.grid = this.createGrid('dark')

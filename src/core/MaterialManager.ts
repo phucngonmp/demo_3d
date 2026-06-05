@@ -267,7 +267,7 @@ export class MaterialManager {
           texture.wrapT = RepeatWrapping
 
           // Use standard explicit scaling instead of guessing mesh geometry
-          const scale = mat.userData?.textureScale ?? 4
+          const scale = mat.userData?.textureScale ?? 2
           texture.repeat.set(scale, scale)
           texture.needsUpdate = true
 
