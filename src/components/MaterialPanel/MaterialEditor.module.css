@@ -114,44 +114,37 @@
   flex-shrink: 0;
 }
 
-/* ─── Texture ─── */
-.textureWrap {
+/* ─── Texture Gallery ─── */
+.gallery {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
-  flex: 1;
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
 }
 
-.texPreview {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-bright);
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: var(--space-2);
+}
+
+.thumbnail {
+  width: 100%;
+  aspect-ratio: 1;
   object-fit: cover;
-}
-
-.texBadge {
-  font-size: 10px;
-  color: var(--success);
-}
-
-.texBtn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-input);
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 3px var(--space-2);
-  transition: background var(--transition-fast), color var(--transition-fast);
   cursor: pointer;
-  margin-left: auto;
+  border: 2px solid transparent;
+  transition: transform 0.1s ease, border-color 0.2s ease;
 }
 
-.texBtn:hover {
-  background: var(--bg-panel-hover);
-  color: var(--text-primary);
+.thumbnail:hover {
+  transform: scale(1.05);
+}
+
+.thumbnail.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }

@@ -144,6 +144,11 @@ export class SceneManager {
     this.camera.updateProjectionMatrix()
   }
 
+  setExposure(value: number): void {
+    this.renderer.toneMappingExposure = value
+  }
+
+
   startLoop(onFrame?: () => void): void {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate)

@@ -209,6 +209,7 @@ export class MaterialManager {
       transparent: mat.transparent ?? false,
       hasMap: isStd && !!(mat as MeshStandardMaterial).map,
       mapPreviewUrl: undefined,
+      textureUrl: mat.userData?.textureUrl,
     }
   }
 
@@ -240,10 +241,9 @@ export class MaterialManager {
     mat.needsUpdate = true
   }
 
-  /** Load an image file as a texture and apply it as the base color map */
-  async swapTexture(mat: AnyMaterial, file: File): Promise<string> {
+  /** Load an image from URL as a texture and apply it as the base color map */
+  async applyTextureFromUrl(mat: AnyMaterial, url: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file)
       const loader = new TextureLoader()
       loader.load(
         url,
@@ -252,14 +252,13 @@ export class MaterialManager {
             if (mat.map) mat.map.dispose()
             mat.map = texture
             mat.needsUpdate = true
+            mat.userData = mat.userData || {}
+            mat.userData.textureUrl = url
           }
-          resolve(url)
+          resolve()
         },
         undefined,
-        () => {
-          URL.revokeObjectURL(url)
-          reject(new Error('Failed to load texture'))
-        }
+        () => reject(new Error('Failed to load texture from url'))
       )
     })
   }

@@ -96,7 +96,9 @@ export interface MaterialOverride {
   metalness?: number
   emissive?: string
   opacity?: number
+  textureUrl?: string
 }
+
 
 interface OverridesRecord {
   fileName: string

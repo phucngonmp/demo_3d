@@ -20,6 +20,7 @@ const DEFAULT_STATE: ViewerState = {
   modelInfo: null,
   wireframe: false,
   showGrid: true,
+  exposure: 1.2,
 }
 
 export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -215,6 +216,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
           if (o.metalness !== undefined && mat instanceof MeshStandardMaterial) mat.metalness = o.metalness
           if (o.emissive && mat instanceof MeshStandardMaterial) mat.emissive.set(o.emissive)
           if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
+          if (o.textureUrl) manager.applyTextureFromUrl(mat, o.textureUrl)
           mat.needsUpdate = true
         })
         // Rebuild UI state to reflect restored overrides
@@ -263,6 +265,13 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       scene.setGridVisible(next)
       return { ...prev, showGrid: next }
     })
+  }, [])
+
+  const changeExposure = useCallback((value: number) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.setExposure(value)
+    setState((prev) => ({ ...prev, exposure: value }))
   }, [])
 
   const resetCamera = useCallback(() => {
@@ -391,6 +400,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
             metalness: m.metalness,
             emissive: '#' + m.emissive.getHexString(),
             opacity: m.opacity,
+            textureUrl: m.userData?.textureUrl,
           }
         })
         saveOverrides(currentFileNameRef.current, overrides)
@@ -399,7 +409,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     [selectedNodeUuid]
   )
 
-  const swapTexture = useCallback(async (matUuid: string, file: File) => {
+  const applyTextureUrl = useCallback(async (matUuid: string, url: string) => {
     const manager = materialManagerRef.current
     const model = currentModelRef.current
     const selectedObject = selectedNodeUuid
@@ -412,21 +422,32 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     if (!mat || !manager) return
 
     try {
-      const previewUrl = await manager.swapTexture(mat, file)
+      await manager.applyTextureFromUrl(mat, url)
       if (model) {
         materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
         setSceneNodes(manager.extractSceneTree(model))
       }
       setMaterialMap((prev) => {
         const next = model ? manager.extractMaterials(model) : new Map(prev)
-        const existing = next.get(mat.uuid)
-        if (existing) {
-          // Revoke old preview URL if any
-          if (existing.mapPreviewUrl) URL.revokeObjectURL(existing.mapPreviewUrl)
-          next.set(mat.uuid, { ...existing, hasMap: true, mapPreviewUrl: previewUrl })
-        }
         return next
       })
+
+      // Autosave texture assignment
+      if (autosaveRef.current && currentFileNameRef.current) {
+        const overrides: Record<string, MaterialOverride> = {}
+        materialObjectMapRef.current.forEach((m) => {
+          if (!m.name || !(m instanceof MeshStandardMaterial)) return
+          overrides[m.name] = {
+            color: '#' + m.color.getHexString(),
+            roughness: m.roughness,
+            metalness: m.metalness,
+            emissive: '#' + m.emissive.getHexString(),
+            opacity: m.opacity,
+            textureUrl: m.userData?.textureUrl,
+          }
+        })
+        saveOverrides(currentFileNameRef.current, overrides)
+      }
     } catch {
       setState((prev) => ({ ...prev, error: 'Failed to load texture.' }))
     }
@@ -447,8 +468,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     selectNode,
     toggleObjectVisibility,
     updateMaterial,
-    swapTexture,
+    applyTextureUrl,
     toggleAutosave,
+    changeExposure,
   }
 }
 

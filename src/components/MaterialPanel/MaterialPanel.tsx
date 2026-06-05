@@ -7,14 +7,14 @@ interface MaterialPanelProps {
   materials: Map<string, MaterialData>
   hasSelection: boolean
   onUpdateMaterial: (uuid: string, patch: Partial<MaterialData>) => void
-  onSwapTexture: (matUuid: string, file: File) => Promise<void>
+  onApplyTextureUrl: (matUuid: string, url: string) => Promise<void>
 }
 
 export function MaterialPanel({
   materials,
   hasSelection,
   onUpdateMaterial,
-  onSwapTexture,
+  onApplyTextureUrl,
 }: MaterialPanelProps) {
   const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
   const matArray = Array.from(materials.values())
@@ -108,7 +108,7 @@ export function MaterialPanel({
               <MaterialEditor
                 mat={mat}
                 onUpdate={(patch) => onUpdateMaterial(mat.uuid, patch)}
-                onSwapTexture={(file) => onSwapTexture(mat.uuid, file)}
+                onApplyTextureUrl={(url) => onApplyTextureUrl(mat.uuid, url)}
               />
             )}
           </div>

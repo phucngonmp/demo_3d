@@ -27,6 +27,7 @@ export interface ViewerState {
   modelInfo: ModelInfo | null
   wireframe: boolean
   showGrid: boolean
+  exposure: number
 }
 
 /** One node in the scene object hierarchy tree */
@@ -67,4 +68,6 @@ export interface MaterialData {
   transparent: boolean
   hasMap: boolean
   mapPreviewUrl?: string
+  textureUrl?: string   // URL to the applied gallery texture
 }
+

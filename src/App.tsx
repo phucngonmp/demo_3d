@@ -49,8 +49,9 @@ function App() {
     selectNode,
     toggleObjectVisibility,
     updateMaterial,
-    swapTexture,
+    applyTextureUrl,
     toggleAutosave,
+    changeExposure,
   } = useModelViewer(containerRef)
 
   // ── Scope materials to selected object ───────────────────────────
@@ -149,12 +150,14 @@ function App() {
         showGrid={state.showGrid}
         hasModel={state.hasModel}
         autosave={autosave}
+        exposure={state.exposure}
         onOpenFile={loadFile}
         onToggleWireframe={toggleWireframe}
         onToggleGrid={toggleGrid}
         onResetCamera={resetCamera}
         onClearModel={clearModel}
         onToggleAutosave={toggleAutosave}
+        onChangeExposure={changeExposure}
       />
 
       {/* ── Work area: left | center | right ── */}
@@ -261,7 +264,7 @@ function App() {
                 materials={scopedMaterialMap}
                 hasSelection={!!selectedNodeUuid}
                 onUpdateMaterial={updateMaterial}
-                onSwapTexture={swapTexture}
+                onApplyTextureUrl={applyTextureUrl}
               />
             )}
           </div>
