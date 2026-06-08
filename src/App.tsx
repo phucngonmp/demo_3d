@@ -36,7 +36,6 @@ function App() {
     undoStack,
     loadFile,
     toggleWireframe,
-    toggleGrid,
     resetCamera,
     clearModel,
     dismissError,
@@ -48,6 +47,9 @@ function App() {
     toggleAutosave,
     changeExposure,
     toggleCameraMode,
+    changeEnvMode,
+    changeWeatherMode,
+    uploadBackground,
   } = useModelViewer(containerRef)
 
   // ── Scope materials to selected object ───────────────────────────
@@ -136,19 +138,22 @@ function App() {
       {/* ── Toolbar ── */}
       <Toolbar
         wireframe={state.wireframe}
-        showGrid={state.showGrid}
         hasModel={state.hasModel}
         autosave={autosave}
         exposure={state.exposure}
         cameraMode={state.cameraMode}
         onOpenFile={loadFile}
         onToggleWireframe={toggleWireframe}
-        onToggleGrid={toggleGrid}
         onResetCamera={resetCamera}
         onClearModel={clearModel}
         onToggleAutosave={toggleAutosave}
         onChangeExposure={changeExposure}
         onToggleCameraMode={toggleCameraMode}
+        envMode={state.envMode}
+        weatherMode={state.weatherMode}
+        onChangeEnvMode={changeEnvMode}
+        onChangeWeatherMode={changeWeatherMode}
+        onUploadBackground={uploadBackground}
       />
 
       {/* ── Work area: center | right ── */}

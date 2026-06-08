@@ -29,7 +29,12 @@ export interface ViewerState {
   showGrid: boolean
   exposure: number
   cameraMode: 'orbit' | 'interior'
+  envMode: EnvMode
+  weatherMode: WeatherMode
 }
+
+export type EnvMode = 'room' | 'neutral' | 'custom'
+export type WeatherMode = 'clear' | 'rain' | 'snow'
 
 /** One node in the scene object hierarchy tree */
 export interface SceneNode {

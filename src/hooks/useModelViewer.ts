@@ -4,6 +4,7 @@ import {
   type Object3D,
   MeshStandardMaterial,
   Mesh,
+  Box3,
 } from 'three'
 import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
@@ -15,7 +16,7 @@ import {
   type MaterialOverride,
 } from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
-import type { ViewerState, SceneNode, MaterialData } from '../core/types'
+import type { ViewerState, SceneNode, MaterialData, EnvMode, WeatherMode } from '../core/types'
 
 const DEFAULT_STATE: ViewerState = {
   isLoading: false,
@@ -24,8 +25,10 @@ const DEFAULT_STATE: ViewerState = {
   modelInfo: null,
   wireframe: false,
   showGrid: true,
-  exposure: 1.8,
+  exposure: 1.0,
   cameraMode: 'orbit',
+  envMode: 'room',
+  weatherMode: 'clear',
 }
 
 export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -171,7 +174,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       scene.scene.add(object)
       currentModelRef.current = object
 
-      // Tell controller which file we're viewing (needed for auto-save key)
+      const initialBox = new Box3().setFromObject(object)
+      scene.fitShadowToBox(initialBox)
+
       // Try restoring saved camera pose for this file; fall back to auto-fit
       controller.fitToObject(object, scene.camera)
 
@@ -279,16 +284,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const next = !prev.wireframe
       loader.setWireframe(model, next)
       return { ...prev, wireframe: next }
-    })
-  }, [])
-
-  const toggleGrid = useCallback(() => {
-    const scene = sceneRef.current
-    if (!scene) return
-    setState((prev) => {
-      const next = !prev.showGrid
-      scene.setGridVisible(next)
-      return { ...prev, showGrid: next }
     })
   }, [])
 
@@ -582,7 +577,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const path = getMeshPath(child)
       const o = prev[path]
       if (!o) return
-      
+
       // Khôi phục lại material y nguyên như snapshot bằng cách clone()
       const newMat = o.clone()
       if (Array.isArray(child.material)) {
@@ -632,6 +627,20 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [undoMaterial])
+  const changeEnvMode = useCallback((envMode: EnvMode) => {
+    setState(prev => ({ ...prev, envMode }))
+    sceneRef.current?.setEnvironmentMode(envMode)
+  }, [])
+
+  const changeWeatherMode = useCallback((weatherMode: WeatherMode) => {
+    setState(prev => ({ ...prev, weatherMode }))
+    sceneRef.current?.setWeatherMode(weatherMode)
+  }, [])
+
+  const uploadBackground = useCallback((file: File) => {
+    const url = URL.createObjectURL(file)
+    sceneRef.current?.setBackgroundImage(url)
+  }, [])
 
   return {
     state,
@@ -642,7 +651,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     undoStack,
     loadFile,
     toggleWireframe,
-    toggleGrid,
     resetCamera,
     clearModel,
     dismissError,
@@ -656,5 +664,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     toggleAutosave,
     changeExposure,
     toggleCameraMode,
+    changeEnvMode,
+    changeWeatherMode,
+    uploadBackground,
   }
 }

@@ -1,41 +1,49 @@
 import { useRef } from 'react'
 import { useTheme } from '../../context/useTheme'
 import styles from './Toolbar.module.css'
+import type { EnvMode, WeatherMode } from '../../core/types'
 
 interface ToolbarProps {
   wireframe: boolean
-  showGrid: boolean
   hasModel: boolean
   autosave: boolean
   exposure: number
   cameraMode: 'orbit' | 'interior'
   onOpenFile: (file: File) => void
   onToggleWireframe: () => void
-  onToggleGrid: () => void
   onResetCamera: () => void
   onClearModel: () => void
   onToggleAutosave: () => void
   onChangeExposure: (val: number) => void
   onToggleCameraMode: () => void
+  envMode: EnvMode
+  weatherMode: WeatherMode
+  onChangeEnvMode: (mode: EnvMode) => void
+  onChangeWeatherMode: (mode: WeatherMode) => void
+  onUploadBackground?: (file: File) => void
 }
 
 export function Toolbar({
   wireframe,
-  showGrid,
   hasModel,
   autosave,
   exposure,
   cameraMode,
   onOpenFile,
   onToggleWireframe,
-  onToggleGrid,
   onResetCamera,
   onClearModel,
   onToggleAutosave,
   onChangeExposure,
   onToggleCameraMode,
+  envMode,
+  weatherMode,
+  onChangeEnvMode,
+  onChangeWeatherMode,
+  onUploadBackground,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bgInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,21 +107,6 @@ export function Toolbar({
         </button>
 
         <button
-          id="btn-grid"
-          className={`${styles.btnToggle} ${showGrid ? styles.active : ''}`}
-          onClick={onToggleGrid}
-          title="Toggle grid"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/>
-          </svg>
-          Grid
-        </button>
-
-        <button
           id="btn-reset-cam"
           className={styles.btnToggle}
           onClick={onResetCamera}
@@ -126,6 +119,51 @@ export function Toolbar({
           Reset Cam
         </button>
       </div>
+
+      <select 
+        className={styles.btnToggle}
+        value={envMode}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            bgInputRef.current?.click()
+          } else {
+            onChangeEnvMode(e.target.value as EnvMode)
+          }
+        }}
+        title="Environment Lighting"
+        style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '4px 8px', color: 'inherit' }}
+      >
+        <option value="room">Room (Default)</option>
+        <option value="neutral">Neutral (No Env)</option>
+        <option value="custom">Custom Image...</option>
+      </select>
+
+      <select 
+        className={styles.btnToggle}
+        value={weatherMode}
+        onChange={(e) => onChangeWeatherMode(e.target.value as WeatherMode)}
+        title="Weather Effects"
+        style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '4px 8px', color: 'inherit' }}
+      >
+        <option value="clear">No Weather</option>
+        <option value="rain">Rain Effect</option>
+        <option value="snow">Snow Effect</option>
+      </select>
+
+      <input
+        ref={bgInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file && onUploadBackground) {
+            onUploadBackground(file)
+            onChangeEnvMode('custom')
+          }
+          e.target.value = ''
+        }}
+      />
 
       <div className={styles.spacer} />
 
