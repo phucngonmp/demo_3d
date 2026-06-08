@@ -33,7 +33,7 @@ export interface ViewerState {
   weatherMode: WeatherMode
 }
 
-export type EnvMode = 'room' | 'neutral' | 'custom'
+export type EnvMode = 'room' | 'neutral' | 'sunset' | 'city'
 export type WeatherMode = 'clear' | 'rain' | 'snow'
 
 /** One node in the scene object hierarchy tree */

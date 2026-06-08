@@ -1,11 +1,12 @@
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { InfoPanel } from './components/InfoPanel/InfoPanel'
 import { DropZone } from './components/DropZone/DropZone'
 import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
+import { MaterialListPanel } from './components/MaterialPanel/MaterialListPanel'
 import { useModelViewer } from './hooks/useModelViewer'
-import type { SceneNode, MaterialData } from './core/types'
+import type { SceneNode } from './core/types'
 import styles from './App.module.css'
 
 type RightTab = 'properties' | 'materials'
@@ -23,6 +24,7 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [activeTab, setActiveTab] = useState<RightTab>('properties')
+  const [activeMaterialUuid, setActiveMaterialUuid] = useState<string | null>(null)
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300)
   const rightSidebarWidthRef = useRef(rightSidebarWidth)
   const resizeFrameRef = useRef<number | null>(null)
@@ -39,6 +41,8 @@ function App() {
     resetCamera,
     clearModel,
     dismissError,
+    selectNode,
+    selectMaterial,
     updateMaterial,
     applyTextureUrl,
     resetTexture,
@@ -49,36 +53,40 @@ function App() {
     toggleCameraMode,
     changeEnvMode,
     changeWeatherMode,
-    uploadBackground,
   } = useModelViewer(containerRef)
 
-  // ── Scope materials to selected object ───────────────────────────
-  const scopedMaterialMap = useMemo((): Map<string, MaterialData> => {
-    if (!selectedNodeUuid) return new Map()
-
-    function findNode(nodes: SceneNode[], uuid: string): SceneNode | null {
-      for (const node of nodes) {
-        if (node.uuid === uuid) return node
-        const found = findNode(node.children, uuid)
-        if (found) return found
-      }
-      return null
-    }
-
-    function collectIds(node: SceneNode): string[] {
-      return [...node.materialIds, ...node.children.flatMap(collectIds)]
-    }
-
-    const node = findNode(sceneNodes, selectedNodeUuid)
-    if (!node) return new Map()
-    const ids = new Set(collectIds(node))
-    return new Map([...materialMap].filter(([uuid]) => ids.has(uuid)))
-  }, [selectedNodeUuid, sceneNodes, materialMap])
-
-  // Auto-switch to Materials tab when an object is selected
+  // Auto-switch to edit tab and select material when an object is clicked in 3D
   useEffect(() => {
-    if (selectedNodeUuid) setActiveTab('materials')
-  }, [selectedNodeUuid])
+    if (selectedNodeUuid) {
+      function findNode(nodes: SceneNode[], uuid: string): SceneNode | null {
+        for (const node of nodes) {
+          if (node.uuid === uuid) return node
+          const found = findNode(node.children, uuid)
+          if (found) return found
+        }
+        return null
+      }
+
+      const node = findNode(sceneNodes, selectedNodeUuid)
+      if (node && node.materialIds.length > 0) {
+        // Select the first material of the mesh and switch to materials tab
+        setActiveMaterialUuid(node.materialIds[0])
+        setActiveTab('materials')
+      } else {
+        // If it's an empty group/object, just show properties
+        setActiveTab('properties')
+      }
+    }
+  }, [selectedNodeUuid, sceneNodes])
+
+  // Sync 3D selection highlight when a material is active
+  useEffect(() => {
+    if (activeTab === 'materials' && activeMaterialUuid) {
+      selectMaterial(activeMaterialUuid)
+    } else {
+      selectNode(selectedNodeUuid)
+    }
+  }, [activeTab, activeMaterialUuid, selectMaterial, selectNode, selectedNodeUuid])
 
   const handleDragStateChange = useCallback((dragging: boolean) => {
     setIsDragOver(dragging)
@@ -153,7 +161,6 @@ function App() {
         weatherMode={state.weatherMode}
         onChangeEnvMode={changeEnvMode}
         onChangeWeatherMode={changeWeatherMode}
-        onUploadBackground={uploadBackground}
       />
 
       {/* ── Work area: center | right ── */}
@@ -168,9 +175,9 @@ function App() {
             <div className={styles.emptyHint}>
               <div className={styles.emptyIcon}>
                 <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-                  <line x1="12" y1="22.08" x2="12" y2="12"/>
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
                 </svg>
               </div>
               <p className={styles.emptyTitle}>No model loaded</p>
@@ -235,18 +242,30 @@ function App() {
                 modelInfo={state.modelInfo}
                 isLoading={state.isLoading}
               />
-            ) : (
-              <MaterialPanel
-                materials={scopedMaterialMap}
-                hasSelection={!!selectedNodeUuid}
-                canUndo={undoStack.length > 0}
-                onUpdateMaterial={updateMaterial}
-                onApplyTextureUrl={applyTextureUrl}
-                onResetTexture={resetTexture}
-                onUndo={undoMaterial}
-                onPushUndo={pushUndo}
-              />
-            )}
+            ) : activeTab === 'materials' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flex: activeMaterialUuid ? '0 0 30%' : 1, minHeight: 0, overflowY: 'auto' }}>
+                  <MaterialListPanel
+                    materials={materialMap}
+                    activeMaterialUuid={activeMaterialUuid}
+                    onSelect={(uuid) => setActiveMaterialUuid(uuid)}
+                  />
+                </div>
+                {activeMaterialUuid && materialMap.has(activeMaterialUuid) && (
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', borderTop: '2px solid var(--border-color)' }}>
+                    <MaterialPanel
+                      material={materialMap.get(activeMaterialUuid)!}
+                      canUndo={undoStack.length > 0}
+                      onUpdateMaterial={updateMaterial}
+                      onApplyTextureUrl={applyTextureUrl}
+                      onResetTexture={resetTexture}
+                      onUndo={undoMaterial}
+                      onPushUndo={pushUndo}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -286,9 +305,9 @@ function App() {
       {state.error && (
         <div className={styles.errorToast} role="alert">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           <span>{state.error}</span>
           <button id="btn-dismiss-error" onClick={dismissError} className={styles.dismissBtn}>✕</button>

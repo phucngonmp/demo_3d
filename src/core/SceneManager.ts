@@ -29,6 +29,8 @@ import {
   TextureLoader,
 } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
+import type { EnvMode } from './types'
 
 export class SceneManager {
   renderer: WebGLRenderer
@@ -44,7 +46,7 @@ export class SceneManager {
   private pointer = new Vector2()
   private theme: 'dark' | 'light' = 'dark'
   private weatherSystem: Points | null = null
-  private currentEnv: string = 'room'
+  private currentEnv: string = ''
   private resizeObserver: ResizeObserver | null = null
   private resizeFrameId: number | null = null
   private mountedContainer: HTMLElement | null = null
@@ -83,9 +85,7 @@ export class SceneManager {
     this.camera.position.set(3, 2, 5)
 
     // Environment Map
-    const pmremGenerator = new PMREMGenerator(this.renderer)
-    pmremGenerator.compileEquirectangularShader()
-    this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture
+    this.setEnvironmentMode('city')
 
     // Ambient light as base
     const ambient = new AmbientLight(0xffffff, 0.3)
@@ -281,6 +281,57 @@ export class SceneManager {
     this.scene.add(group)
   }
 
+  setSelectedMaterial(materialUuid: string | null): void {
+    this.clearSelection()
+    if (!materialUuid) return
+
+    const color = this.getSelectionColor()
+    const group = new Group()
+    const lineMaterial = new LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    })
+    this.selectionLineMaterial = lineMaterial
+
+    let hasSelection = false
+
+    this.scene.traverse((child) => {
+      if (!(child instanceof Mesh) || !child.visible) return
+
+      let hasMat = false
+      if (Array.isArray(child.material)) {
+        if (child.material.some((m) => m.uuid === materialUuid)) hasMat = true
+      } else if (child.material && child.material.uuid === materialUuid) {
+        hasMat = true
+      }
+
+      if (hasMat) {
+        hasSelection = true
+        const edgesGeometry = new EdgesGeometry(child.geometry, 25)
+        this.selectionEdgeGeometries.push(edgesGeometry)
+        const outline = new LineSegments(edgesGeometry, lineMaterial)
+        outline.matrixAutoUpdate = false
+        outline.matrix.copy(child.matrixWorld)
+        outline.renderOrder = 999
+        group.add(outline)
+
+        const box = new BoxHelper(child, color)
+        box.renderOrder = 1000
+        box.material.depthTest = false
+        box.material.transparent = true
+        this.selectionBoxes.push(box)
+        group.add(box)
+      }
+    })
+
+    if (!hasSelection) return
+
+    this.selectionGroup = group
+    this.scene.add(group)
+  }
+
   clearSelection(): void {
     if (this.selectionGroup) {
       this.scene.remove(this.selectionGroup)
@@ -317,13 +368,22 @@ export class SceneManager {
     this.selectionBoxes.forEach((box) => box.material.color.set(color))
   }
 
-  setEnvironmentMode(mode: 'room' | 'neutral' | 'custom'): void {
+  setEnvironmentMode(mode: EnvMode): void {
     if (this.currentEnv === mode) return
     this.currentEnv = mode
 
+    // Dọn dẹp bầu trời cũ nếu có
+    const oldSky = this.scene.getObjectByName('ProceduralSky')
+    if (oldSky) {
+      this.scene.remove(oldSky)
+      ;(oldSky as Mesh).geometry.dispose()
+      ;((oldSky as Mesh).material as Material).dispose()
+    }
+
+    const pmremGenerator = new PMREMGenerator(this.renderer)
+    pmremGenerator.compileEquirectangularShader()
+
     if (mode === 'room') {
-      const pmremGenerator = new PMREMGenerator(this.renderer)
-      pmremGenerator.compileEquirectangularShader()
       this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture
       this.scene.background = null
       if (this.keyLight) this.keyLight.intensity = 1.0
@@ -331,6 +391,25 @@ export class SceneManager {
       this.scene.environment = null
       this.scene.background = new Color('#aaaaaa')
       if (this.keyLight) this.keyLight.intensity = 0.5
+    } else if (mode === 'sunset' || mode === 'city') {
+      // Load HDRI for realistic reflections
+      const url = mode === 'city'
+        ? './city.hdr' // Hình Thành Phố Buổi Sáng (Polyhaven Urban Alley)
+        : 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/venice_sunset_1k.hdr'
+      
+      new RGBELoader().load(url, (texture) => {
+        if (this.currentEnv === mode) {
+          const envMap = pmremGenerator.fromEquirectangular(texture).texture
+          this.scene.environment = envMap
+          this.scene.background = null // Giữ nền trong suốt, chỉ lấy ánh sáng phản chiếu
+        }
+        texture.dispose()
+        pmremGenerator.dispose()
+      })
+      if (this.keyLight) {
+        this.keyLight.intensity = 1.5 // Ánh sáng rực rỡ hơn
+        this.keyLight.color.setHex(0xffffff)
+      }
     }
   }
 

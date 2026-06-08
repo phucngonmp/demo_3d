@@ -24,9 +24,8 @@ export class CameraController {
 
     this.controls.minDistance = 0.001
     this.controls.maxDistance = Infinity
-    this.controls.maxPolarAngle = Math.PI // Cho phép xoay nhìn từ dưới lên (180 độ)
+    this.controls.maxPolarAngle = Math.PI
 
-    // Keyboard movement listeners
     const onKeyDown = (e: KeyboardEvent) => {
       if (this.mode !== 'interior') return
       switch (e.code) {
@@ -53,10 +52,9 @@ export class CameraController {
     }
   }
 
-  /** Call this each frame in the animation loop */
   update(): void {
     const now = performance.now()
-    const delta = Math.min((now - this.lastTime) / 1000, 0.1) // seconds, max 100ms
+    const delta = Math.min((now - this.lastTime) / 1000, 0.1)
     this.lastTime = now
 
     if (this.mode === 'interior' && this.boundingBox) {
@@ -105,8 +103,9 @@ export class CameraController {
     nextPos.addScaledVector(forward, moveZ * dist)
     nextPos.addScaledVector(right, moveX * dist)
 
-    const paddingX = (this.boundingBox.max.x - this.boundingBox.min.x) * 2
-    const paddingZ = (this.boundingBox.max.z - this.boundingBox.min.z) * 2
+    // Khong cho di xuyen tuong, padding giu nguoi ben trong
+    const paddingX = Math.min(-0.2, -(this.boundingBox.max.x - this.boundingBox.min.x) * 0.05)
+    const paddingZ = Math.min(-0.2, -(this.boundingBox.max.z - this.boundingBox.min.z) * 0.05)
 
     const clampedX = Math.max(this.boundingBox.min.x - paddingX, Math.min(this.boundingBox.max.x + paddingX, nextPos.x))
     const clampedZ = Math.max(this.boundingBox.min.z - paddingZ, Math.min(this.boundingBox.max.z + paddingZ, nextPos.z))
@@ -134,7 +133,6 @@ export class CameraController {
     }
   }
 
-  /** Frame or stand inside the object based on current mode */
   fitToObject(object: Object3D, camera: PerspectiveCamera): void {
     const box = new Box3().setFromObject(object)
     this.boundingBox = box
@@ -146,15 +144,18 @@ export class CameraController {
       box.getSize(size)
       const maxDim = Math.max(size.x, size.y, size.z) || 1
 
-      // Auto-detect unit (m or mm) to make 1.7m realistic
       const eyeHeight = maxDim > 500 ? 1700 : 1.7
       const eyeLevelY = box.min.y + eyeHeight
 
-      // Đặt camera ở trung tâm và cao 1.7m
-      camera.position.set(center.x, eyeLevelY, center.z + (maxDim * 0.4)) // Lùi lại chút để dễ thấy phòng
-
-      // Ép hướng nhìn ngang hoàn hảo (không bị chúc xuống đất hay ngóc lên trời)
-      this.controls.target.set(center.x, eyeLevelY, center.z)
+      // Đặt vị trí xuất phát ở chính giữa phòng (tâm Bounding Box)
+      camera.position.set(center.x, eyeLevelY, center.z)
+      
+      // MẸO GIẢ LẬP FPS VỚI ORBITCONTROLS: 
+      // Đặt target cực kỳ gần với camera (cách 0.01 đơn vị) phía trước mặt.
+      // Nhờ đó khi kéo chuột, camera không bị "dịch chuyển 1 đoạn" quay quanh trung tâm nhà, 
+      // mà nó sẽ xoay tại chỗ (xoay quanh cái target sát mặt).
+      const lookDist = maxDim > 500 ? 10 : 0.01
+      this.controls.target.set(center.x, eyeLevelY, center.z - lookDist)
       this.controls.update()
 
       camera.near = this.getInteriorNearPlane(maxDim)
@@ -165,7 +166,7 @@ export class CameraController {
       const maxDim = Math.max(size.x, size.y, size.z) || 1
       const fov = camera.fov * (Math.PI / 180)
       let cameraDistance = Math.abs(maxDim / (2 * Math.tan(fov / 2)))
-      cameraDistance *= 1.8 // padding
+      cameraDistance *= 1.8
 
       const direction = camera.position.clone().sub(this.controls.target).normalize()
       if (direction.lengthSq() < 0.001) direction.set(0, 0, 1)
@@ -180,7 +181,6 @@ export class CameraController {
 
       camera.near = near
       camera.far = Math.max(1000, maxDim * 30)
-      camera.updateProjectionMatrix()
     }
     camera.updateProjectionMatrix()
   }
@@ -191,51 +191,67 @@ export class CameraController {
   }
 
   private getInteriorNearPlane(maxDim: number): number {
-    if (maxDim > 500) return Math.max(0.5, Math.min(5, maxDim * 0.002))
-    return Math.max(0.01, Math.min(0.05, maxDim * 0.001))
+    if (maxDim > 500) return Math.max(1, Math.min(10, maxDim * 0.001))
+    return Math.max(0.01, Math.min(0.1, maxDim * 0.001))
   }
 
-  reset(): void {
-    this.controls.reset()
-  }
-
-  enable(): void {
-    this.controls.enabled = true
-  }
-
-  disable(): void {
-    this.controls.enabled = false
-  }
-
-  teleportTo(x: number, z: number): void {
-    if (this.mode !== 'interior' || !this.boundingBox) return
-
-    const paddingX = (this.boundingBox.max.x - this.boundingBox.min.x) * 2
-    const paddingZ = (this.boundingBox.max.z - this.boundingBox.min.z) * 2
-
-    const minX = this.boundingBox.min.x - paddingX
-    const maxX = this.boundingBox.max.x + paddingX
-    const minZ = this.boundingBox.min.z - paddingZ
-    const maxZ = this.boundingBox.max.z + paddingZ
-
-    const finalPx = Math.max(minX, Math.min(maxX, x))
-    const finalPz = Math.max(minZ, Math.min(maxZ, z))
-
+  saveState(): void {
     const cam = this.controls.object as PerspectiveCamera
-    const actualDX = finalPx - cam.position.x
-    const actualDZ = finalPz - cam.position.z
+    const state = {
+      position: cam.position.toArray(),
+      target: this.controls.target.toArray(),
+      zoom: cam.zoom,
+      mode: this.mode
+    }
+    localStorage.setItem('viewer_camera_state', JSON.stringify(state))
+  }
 
-    cam.position.x += actualDX
-    cam.position.z += actualDZ
-    this.controls.target.x += actualDX
-    this.controls.target.z += actualDZ
-
-    this.controls.update()
+  loadState(): boolean {
+    const stateStr = localStorage.getItem('viewer_camera_state')
+    if (!stateStr) return false
+    try {
+      const state = JSON.parse(stateStr)
+      if (state.mode && state.mode !== this.mode) return false
+      
+      const cam = this.controls.object as PerspectiveCamera
+      cam.position.fromArray(state.position)
+      this.controls.target.fromArray(state.target)
+      cam.zoom = state.zoom || 1
+      cam.updateProjectionMatrix()
+      this.controls.update()
+      return true
+    } catch {
+      return false
+    }
   }
 
   dispose(): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer)
     if (this.cleanupListeners) this.cleanupListeners()
+    if (this.saveTimer) clearTimeout(this.saveTimer)
     this.controls.dispose()
+  }
+
+  reset(): void {
+    const cam = this.controls.object as PerspectiveCamera
+    cam.position.set(3, 2, 5)
+    this.controls.target.set(0, 0, 0)
+    cam.zoom = 1
+    cam.updateProjectionMatrix()
+    this.controls.update()
+  }
+
+  teleportTo(x: number, z: number): void {
+    if (this.mode !== 'interior') return
+    const cam = this.controls.object as PerspectiveCamera
+    
+    // Tính toán độ dời
+    const dx = x - cam.position.x
+    const dz = z - cam.position.z
+    
+    cam.position.x += dx
+    cam.position.z += dz
+    this.controls.target.x += dx
+    this.controls.target.z += dz
+    this.controls.update()
   }
 }

@@ -17,6 +17,7 @@ import {
 } from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
 import type { ViewerState, SceneNode, MaterialData, EnvMode, WeatherMode } from '../core/types'
+import defaultModelUrl from '../assets/glb/basic_kitchen.glb?url'
 
 const DEFAULT_STATE: ViewerState = {
   isLoading: false,
@@ -26,8 +27,8 @@ const DEFAULT_STATE: ViewerState = {
   wireframe: false,
   showGrid: true,
   exposure: 1.0,
-  cameraMode: 'orbit',
-  envMode: 'room',
+  cameraMode: 'interior',
+  envMode: 'city',
   weatherMode: 'clear',
 }
 
@@ -133,9 +134,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (file && loadModelRef.current) {
         loadModelRef.current(file)
       } else if (loadModelRef.current) {
-        const defaultName = 'italian_kitchen.glb'
-        const defaultUrl = `${import.meta.env.BASE_URL}${defaultName}`
-        loadModelRef.current({ url: defaultUrl, name: defaultName })
+        const defaultName = 'basic_kitchen.glb'
+        loadModelRef.current({ url: defaultModelUrl, name: defaultName })
       }
     })
   }, [isReady])
@@ -177,8 +177,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const initialBox = new Box3().setFromObject(object)
       scene.fitShadowToBox(initialBox)
 
-      // Try restoring saved camera pose for this file; fall back to auto-fit
-      controller.fitToObject(object, scene.camera)
+      // Ensure controller mode is in sync with the UI state before fitting
+      controller.setMode(state.cameraMode, object, scene.camera)
 
       // Build scene tree + material data
       const nodes = manager.extractSceneTree(object)
@@ -642,6 +642,10 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneRef.current?.setBackgroundImage(url)
   }, [])
 
+  const selectMaterial = useCallback((uuid: string | null) => {
+    sceneRef.current?.setSelectedMaterial(uuid)
+  }, [])
+
   return {
     state,
     sceneNodes,
@@ -655,6 +659,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     clearModel,
     dismissError,
     selectNode,
+    selectMaterial,
     toggleObjectVisibility,
     pushUndo,
     updateMaterial,

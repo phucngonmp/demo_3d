@@ -20,7 +20,6 @@ interface ToolbarProps {
   weatherMode: WeatherMode
   onChangeEnvMode: (mode: EnvMode) => void
   onChangeWeatherMode: (mode: WeatherMode) => void
-  onUploadBackground?: (file: File) => void
 }
 
 export function Toolbar({
@@ -40,10 +39,8 @@ export function Toolbar({
   weatherMode,
   onChangeEnvMode,
   onChangeWeatherMode,
-  onUploadBackground,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const bgInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,19 +120,14 @@ export function Toolbar({
       <select 
         className={styles.btnToggle}
         value={envMode}
-        onChange={(e) => {
-          if (e.target.value === 'custom') {
-            bgInputRef.current?.click()
-          } else {
-            onChangeEnvMode(e.target.value as EnvMode)
-          }
-        }}
+        onChange={(e) => onChangeEnvMode(e.target.value as EnvMode)}
         title="Environment Lighting"
         style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '4px 8px', color: 'inherit' }}
       >
-        <option value="room">Room (Default)</option>
-        <option value="neutral">Neutral (No Env)</option>
-        <option value="custom">Custom Image...</option>
+        <option value="city">City Street (Morning HDRI)</option>
+        <option value="sunset">Sunset (HDRI)</option>
+        <option value="room">Studio (No Env)</option>
+        <option value="neutral">Neutral</option>
       </select>
 
       <select 
@@ -150,20 +142,7 @@ export function Toolbar({
         <option value="snow">Snow Effect</option>
       </select>
 
-      <input
-        ref={bgInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file && onUploadBackground) {
-            onUploadBackground(file)
-            onChangeEnvMode('custom')
-          }
-          e.target.value = ''
-        }}
-      />
+
 
       <div className={styles.spacer} />
 

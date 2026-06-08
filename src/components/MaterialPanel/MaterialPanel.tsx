@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react'
 import type { MaterialData } from '../../core/types'
 import { MaterialEditor } from './MaterialEditor'
 import styles from './MaterialPanel.module.css'
 
 interface MaterialPanelProps {
-  materials: Map<string, MaterialData>
-  hasSelection: boolean
+  material: MaterialData
   canUndo: boolean
   onUpdateMaterial: (uuid: string, patch: Partial<MaterialData>, skipUndo?: boolean) => void
   onApplyTextureUrl: (matUuid: string, url: string) => Promise<void>
@@ -15,8 +13,7 @@ interface MaterialPanelProps {
 }
 
 export function MaterialPanel({
-  materials,
-  hasSelection,
+  material,
   canUndo,
   onUpdateMaterial,
   onApplyTextureUrl,
@@ -24,62 +21,15 @@ export function MaterialPanel({
   onUndo,
   onPushUndo,
 }: MaterialPanelProps) {
-  const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
-  const matArray = Array.from(materials.values())
-
-  // Tự động xổ tung vật liệu đầu tiên khi sếp vừa click chọn vật thể
-  useEffect(() => {
-    if (matArray.length > 0) {
-      // Nếu chưa có thẻ nào mở, hoặc thẻ đang mở không thuộc về vật thể này -> Mở thẻ đầu tiên
-      if (!expandedUuid || !materials.has(expandedUuid)) {
-        setExpandedUuid(matArray[0].uuid)
-      }
-    }
-  }, [materials]) // Chỉ chạy lại khi danh sách vật liệu thay đổi (tức là khi click vật thể mới)
-
-  const toggleExpand = (uuid: string) => {
-    setExpandedUuid((prev) => (prev === uuid ? null : uuid))
-  }
-
-  if (!hasSelection) {
-    return (
-      <div className={styles.empty}>
-        <div className={styles.emptyIcon}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-            <polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
-        </div>
-        <p>No object selected</p>
-        <p className={styles.emptyHint}>
-          Click an object in the <strong>Scene</strong> panel or click directly in the viewport
-        </p>
-      </div>
-    )
-  }
-
-  if (matArray.length === 0) {
-    return (
-      <div className={styles.empty}>
-        <div className={styles.emptyIcon}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 8v4M12 16h.01"/>
-          </svg>
-        </div>
-        <p>No materials</p>
-        <p className={styles.emptyHint}>This object has no editable materials</p>
-      </div>
-    )
-  }
+  if (!material) return null
 
   return (
     <div className={styles.list}>
       {/* ─── Global Material Actions ─── */}
-      <div className={styles.panelHeader}>
-        <button 
-          className={styles.undoBtn} 
-          onClick={onUndo} 
+      <div className={styles.panelHeader} style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+        <button
+          className={styles.undoBtn}
+          onClick={onUndo}
           disabled={!canUndo}
           title="Undo last material change"
         >
@@ -87,65 +37,19 @@ export function MaterialPanel({
         </button>
       </div>
 
-      {matArray.map((mat) => {
-        const isExpanded = expandedUuid === mat.uuid
-        return (
-          <div key={mat.uuid} className={`${styles.item} ${isExpanded ? styles.itemExpanded : ''}`}>
-            {/* Material row */}
-            <button
-              className={styles.matRow}
-              onClick={() => toggleExpand(mat.uuid)}
-              aria-expanded={isExpanded}
-            >
-              {/* Color swatch */}
-              <span
-                className={styles.swatch}
-                style={{ background: mat.color }}
-                title={mat.color}
-              />
-              {/* Name */}
-              <span className={styles.matName} title={mat.name}>
-                {mat.name || 'Material'}
-              </span>
-              {/* Type badge */}
-              <span className={styles.typeBadge}>
-                {mat.type.replace('Material', '')}
-              </span>
-              {/* Texture indicator */}
-              {mat.hasMap && (
-                <span className={styles.texIndicator} title="Has texture">
-                  ▦
-                </span>
-              )}
-              {/* Chevron */}
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                className={styles.chevron}
-                style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-
-            {/* Editor — shown when expanded */}
-            {isExpanded && (
-              <MaterialEditor
-                mat={mat}
-                onUpdate={(patch, skipUndo) => onUpdateMaterial(mat.uuid, patch, skipUndo)}
-                onApplyTextureUrl={(url) => onApplyTextureUrl(mat.uuid, url)}
-                onResetTexture={() => onResetTexture(mat.uuid)}
-                onPushUndo={onPushUndo}
-              />
-            )}
-          </div>
-        )
-      })}
+      <div className={styles.itemExpanded} style={{ marginTop: '12px' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'var(--text-color)', fontWeight: 600, borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', textAlign: 'center' }}>
+          {material.name || 'Unnamed Material'}
+        </h3>
+        {/* Editor */}
+        <MaterialEditor
+          mat={material}
+          onUpdate={(patch, skipUndo) => onUpdateMaterial(material.uuid, patch, skipUndo)}
+          onApplyTextureUrl={(url) => onApplyTextureUrl(material.uuid, url)}
+          onResetTexture={() => onResetTexture(material.uuid)}
+          onPushUndo={onPushUndo}
+        />
+      </div>
     </div>
   )
 }
