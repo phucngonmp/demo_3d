@@ -233,7 +233,7 @@ function App() {
       </div>
 
       {/* ── Status bar ── */}
-      <div className={styles.statusBar}>
+      <div className={styles.statusBar} style={{ display: 'none' }}>
         <span className={styles.statusItem}>
           <span className={`${styles.dot} ${state.hasModel ? styles.dotGreen : styles.dotGray}`} />
           {state.hasModel ? state.modelInfo?.fileName : 'No model'}
