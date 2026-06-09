@@ -439,7 +439,7 @@ export class SceneManager {
     } else if (mode === 'sunset' || mode === 'city') {
       // Load HDRI for realistic reflections
       const url = mode === 'city'
-        ? './city.hdr' // Hình Thành Phố Buổi Sáng (Polyhaven Urban Alley)
+        ? './NeuesMuseumSkyG(1).hdr'
         : 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/venice_sunset_1k.hdr'
       
       new RGBELoader().load(url, (texture) => {
