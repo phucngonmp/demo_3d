@@ -34,7 +34,7 @@ export class CameraController {
         case 'KeyA': case 'ArrowLeft': this.keys.left = true; e.preventDefault(); break;
         case 'KeyD': case 'ArrowRight': this.keys.right = true; e.preventDefault(); break;
         case 'KeyQ': case 'Space': this.keys.up = true; e.preventDefault(); break;
-        case 'KeyE': case 'ShiftLeft': case 'ShiftRight': this.keys.down = true; e.preventDefault(); break;
+        case 'KeyE': this.keys.down = true; e.preventDefault(); break;
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
@@ -45,7 +45,7 @@ export class CameraController {
         case 'KeyA': case 'ArrowLeft': this.keys.left = false; e.preventDefault(); break;
         case 'KeyD': case 'ArrowRight': this.keys.right = false; e.preventDefault(); break;
         case 'KeyQ': case 'Space': this.keys.up = false; e.preventDefault(); break;
-        case 'KeyE': case 'ShiftLeft': case 'ShiftRight': this.keys.down = false; e.preventDefault(); break;
+        case 'KeyE': this.keys.down = false; e.preventDefault(); break;
       }
     }
     window.addEventListener('keydown', onKeyDown)

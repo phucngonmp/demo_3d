@@ -3,6 +3,7 @@ export interface CategoryConfig {
   displayName: string
   keywords: string[]
   color: string
+  folderName?: string
 }
 
 export const B2C_CATEGORIES: CategoryConfig[] = [
@@ -16,7 +17,8 @@ export const B2C_CATEGORIES: CategoryConfig[] = [
     id: 'cat_wall',
     displayName: 'Tường',
     keywords: ['t_beige', 'Wall_Brown'],
-    color: '#fefae0'
+    color: '#fefae0',
+    folderName: 'wall'
   },
   {
     id: 'cat_wood_interior',
@@ -47,5 +49,12 @@ export const B2C_CATEGORIES: CategoryConfig[] = [
     displayName: 'Đồ Inox',
     keywords: ['metal_brown_mate'],
     color: '#9ca3af'
+  },
+  {
+    id: 'cat_floor',
+    displayName: 'Sàn Nhà',
+    keywords: ['floor', 'san_nha', 'wood_floor'],
+    color: '#cdb4db',
+    folderName: 'floor'
   },
 ]

@@ -16,7 +16,7 @@ import {
   type MaterialOverride,
 } from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
-import type { ViewerState, SceneNode, MaterialData, EnvMode } from '../core/types'
+import type { ViewerState, SceneNode, MaterialData, PBRTextureSet, EnvMode } from '../core/types'
 import defaultModelUrl from '../assets/glb/basic_kitchen.glb?url'
 import { B2C_CATEGORIES } from '../config/materialConfig'
 
@@ -38,7 +38,7 @@ const rebuildGroupMap = (matMap: Map<string, MaterialData>) => {
   const groupMap = new Map<string, MaterialData>()
   for (const m of Array.from(matMap.values())) {
     const matNameLower = m.name.toLowerCase()
-    
+
     let matchedCat = null
     for (const cat of B2C_CATEGORIES) {
       if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
@@ -46,16 +46,16 @@ const rebuildGroupMap = (matMap: Map<string, MaterialData>) => {
         break
       }
     }
-    
+
     if (matchedCat && !groupMap.has(matchedCat.id)) {
-       groupMap.set(matchedCat.id, { 
-         ...m, 
-         uuid: matchedCat.id, 
-         name: matchedCat.displayName, 
-         displayName: matchedCat.displayName, 
-         color: matchedCat.color,
-         type: 'Group' 
-       })
+      groupMap.set(matchedCat.id, {
+        ...m,
+        uuid: matchedCat.id,
+        name: matchedCat.displayName,
+        displayName: matchedCat.displayName,
+        color: matchedCat.color,
+        type: 'Group'
+      })
     }
   }
 
@@ -237,7 +237,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const nodes = manager.extractSceneTree(object)
       const matMap = manager.extractMaterials(object)
       const meshInventory = manager.getMeshInventory(object)
-      
+
       console.log("%c🔥 ALL MATERIAL NAMES IN THIS MODEL:", "color: #00ff00; font-size: 14px; font-weight: bold;")
       console.log(Array.from(matMap.values()).map(m => m.name).filter((v, i, a) => a.indexOf(v) === i))
 
@@ -303,7 +303,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
                 if (o.emissive) mat.emissive.set(o.emissive)
                 if (o.opacity !== undefined) { mat.opacity = o.opacity; mat.transparent = o.opacity < 1 }
                 if (o.textureScale !== undefined) manager.applyTextureScale(mat, o.textureScale)
-                if (o.textureUrl) manager.applyTextureFromUrl(mat, o.textureUrl)
+                if (o.textureSet) manager.applyPBRTexture(mat, o.textureSet)
                 mat.needsUpdate = true
               }
             }
@@ -468,7 +468,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
           if (patch.emissive) manager.applyEmissive(mat, patch.emissive)
           if (patch.opacity !== undefined) manager.applyOpacity(mat, patch.opacity)
           if (patch.textureScale !== undefined) manager.applyTextureScale(mat, patch.textureScale)
-          
+
           mat.userData = mat.userData || {}
           mat.userData.isModified = true
         }
@@ -476,13 +476,13 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
       materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
       setSceneNodes(manager.extractSceneTree(model))
-      
+
       // Update our virtual group map
       setMaterialMap(prev => {
-         const next = new Map(prev)
-         const d = next.get(groupId)
-         if (d) next.set(groupId, { ...d, ...patch })
-         return next
+        const next = new Map(prev)
+        const d = next.get(groupId)
+        if (d) next.set(groupId, { ...d, ...patch })
+        return next
       })
 
       // Autosave
@@ -500,7 +500,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
                 emissive: '#' + mat.emissive.getHexString(),
                 opacity: mat.opacity,
               }
-              if (mat.userData?.textureUrl) overrides[path].textureUrl = mat.userData.textureUrl
+              if (mat.userData?.textureSet) overrides[path].textureSet = mat.userData.textureSet
               if (mat.userData?.textureScale !== undefined) overrides[path].textureScale = mat.userData.textureScale
             }
           }
@@ -511,7 +511,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     [pushUndo]
   )
 
-  const applyTextureUrl = useCallback(async (groupId: string, url: string) => {
+  const applyTexture = useCallback(async (groupId: string, texSet: PBRTextureSet) => {
     const manager = materialManagerRef.current
     const model = currentModelRef.current
     if (!manager || !model) return
@@ -526,29 +526,39 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
           if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
             child.material = manager.isolateMaterialToObject(model, child, m.uuid)
             targetMats.add(child.material)
+            manager.applyBoxUV(child)
           }
         })
       }
     })
 
     try {
+      // 1. Pre-load texture images EXACTLY ONCE to avoid crashing the browser with thousands of HTTP requests
+      const loadedDiff = await manager.loadTexture(texSet.diffuse, true)
+      const loadedNor = texSet.normal ? await manager.loadTexture(texSet.normal, false) : undefined
+      const loadedRough = texSet.roughness ? await manager.loadTexture(texSet.roughness, false) : undefined
+      const loadedAo = texSet.ao ? await manager.loadTexture(texSet.ao, false) : undefined
+
+      const loadedMaps = { diff: loadedDiff, nor: loadedNor, rough: loadedRough, ao: loadedAo }
+
+      // 2. Apply the pre-loaded textures to all materials efficiently
       await Promise.all(Array.from(targetMats).map(async (mat) => {
-         await manager.applyTextureFromUrl(mat, url)
-         mat.userData = mat.userData || {}
-         mat.userData.isModified = true
+        manager.applyPBRTextureLoaded(mat, texSet, loadedMaps)
+        mat.userData = mat.userData || {}
+        mat.userData.isModified = true
       }))
 
       materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
       setSceneNodes(manager.extractSceneTree(model))
-      
+
       // We need to refresh the groupMap to reflect the new texture
       setMaterialMap(prev => {
-         const next = new Map(prev)
-         const d = next.get(groupId)
-         if (d) {
-           next.set(groupId, { ...d, hasMap: true, textureUrl: url })
-         }
-         return next
+        const next = new Map(prev)
+        const d = next.get(groupId)
+        if (d) {
+          next.set(groupId, { ...d, hasMap: true, textureSet: texSet })
+        }
+        return next
       })
 
       // Autosave
@@ -566,7 +576,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
                 emissive: '#' + m.emissive.getHexString(),
                 opacity: m.opacity,
               }
-              if (m.userData?.textureUrl) overrides[path].textureUrl = m.userData.textureUrl
+              if (m.userData?.textureSet) overrides[path].textureSet = m.userData.textureSet
               if (m.userData?.textureScale !== undefined) overrides[path].textureScale = m.userData.textureScale
             }
           }
@@ -604,7 +614,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         if (mat.map) { mat.map.dispose(); mat.map = null }
         mat.color.set('#ffffff')
         mat.userData = mat.userData || {}
-        delete mat.userData.textureUrl
+        delete mat.userData.textureSet
         delete mat.userData.textureScale
         mat.userData.isModified = true
         mat.needsUpdate = true
@@ -613,14 +623,14 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
     materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
     setSceneNodes(manager.extractSceneTree(model))
-    
+
     setMaterialMap(prev => {
-       const next = new Map(prev)
-       const d = next.get(groupId)
-       if (d) {
-         next.set(groupId, { ...d, color: '#ffffff', hasMap: false, textureUrl: undefined })
-       }
-       return next
+      const next = new Map(prev)
+      const d = next.get(groupId)
+      if (d) {
+        next.set(groupId, { ...d, color: '#ffffff', hasMap: false, textureSet: undefined })
+      }
+      return next
     })
   }, [pushUndo])
 
@@ -668,7 +678,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
               emissive: '#' + m.emissive.getHexString(),
               opacity: m.opacity,
             }
-            if (m.userData?.textureUrl) overrides[path].textureUrl = m.userData.textureUrl
+            if (m.userData?.textureSet) overrides[path].textureSet = m.userData.textureSet
             if (m.userData?.textureScale !== undefined) overrides[path].textureScale = m.userData.textureScale
           }
         }
@@ -701,32 +711,32 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
   const selectMaterial = useCallback((groupId: string | null) => {
     if (!groupId) {
-       // sceneRef.current?.setSelectedMaterial(null)
-       return
+      // sceneRef.current?.setSelectedMaterial(null)
+      return
     }
     const mNames: string[] = []
     currentModelRef.current?.traverse(child => {
-       if (child instanceof Mesh) {
-          const mArr = Array.isArray(child.material) ? child.material : [child.material]
-          mArr.forEach(m => {
-            if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
-              mNames.push(m.name)
-            }
-          })
-       }
+      if (child instanceof Mesh) {
+        const mArr = Array.isArray(child.material) ? child.material : [child.material]
+        mArr.forEach(m => {
+          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
+            mNames.push(m.name)
+          }
+        })
+      }
     })
     // Disable highlighting selected group as requested by user
     // sceneRef.current?.setSelectedMaterialsByName(mNames)
   }, [])
 
   const getGroupIdForNode = useCallback((nodeUuid: string): string | null => {
-     const obj = objectMapRef.current.get(nodeUuid);
-     if(!(obj instanceof Mesh)) return null;
-     const mArr = Array.isArray(obj.material) ? obj.material : [obj.material]
-     if (mArr.length > 0) {
-       return getGroupIdForMaterialName(mArr[0].name, isFallbackModeRef.current)
-     }
-     return null;
+    const obj = objectMapRef.current.get(nodeUuid);
+    if (!(obj instanceof Mesh)) return null;
+    const mArr = Array.isArray(obj.material) ? obj.material : [obj.material]
+    if (mArr.length > 0) {
+      return getGroupIdForMaterialName(mArr[0].name, isFallbackModeRef.current)
+    }
+    return null;
   }, [])
 
   return {
@@ -746,7 +756,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     toggleObjectVisibility,
     pushUndo,
     updateMaterial,
-    applyTextureUrl,
+    applyTexture,
     resetTexture,
     undoMaterial,
     toggleAutosave,

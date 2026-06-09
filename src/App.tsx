@@ -39,7 +39,7 @@ function App() {
     selectNode,
     selectMaterial,
     updateMaterial,
-    applyTextureUrl,
+    applyTexture,
     resetTexture,
     undoMaterial,
     pushUndo,
@@ -219,8 +219,9 @@ function App() {
                     <MaterialPanel
                       material={materialMap.get(activeMaterialUuid)!}
                       canUndo={undoStack.length > 0}
+                      activeGroupId={activeMaterialUuid}
                       onUpdateMaterial={updateMaterial}
-                      onApplyTextureUrl={applyTextureUrl}
+                      onApplyTextureSet={applyTexture}
                       onResetTexture={resetTexture}
                       onUndo={undoMaterial}
                       onPushUndo={pushUndo}

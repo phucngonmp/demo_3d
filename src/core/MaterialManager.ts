@@ -7,9 +7,11 @@ import {
   Vector3,
   RepeatWrapping,
   SRGBColorSpace,
+  BufferAttribute,
   type Object3D,
+  type Texture,
 } from 'three'
-import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem } from './types'
+import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem, PBRTextureSet } from './types'
 
 type AnyMaterial = Material
 
@@ -210,8 +212,7 @@ export class MaterialManager {
       opacity: mat.opacity ?? 1,
       transparent: mat.transparent ?? false,
       hasMap: isStd && !!(mat as MeshStandardMaterial).map,
-      mapPreviewUrl: undefined,
-      textureUrl: mat.userData?.textureUrl,
+      textureSet: mat.userData?.textureSet,
       textureScale: mat.userData?.textureScale ?? 4,
     }
   }
@@ -245,57 +246,157 @@ export class MaterialManager {
   }
 
   applyTextureScale(mat: AnyMaterial, scale: number): void {
-    if (mat instanceof MeshStandardMaterial && mat.map) {
-      mat.map.repeat.set(scale, scale)
-      mat.map.needsUpdate = true
+    if (mat instanceof MeshStandardMaterial) {
+      const maps = [mat.map, mat.normalMap, mat.roughnessMap, mat.aoMap].filter(Boolean) as Texture[]
+      maps.forEach(t => {
+        t.repeat.set(scale, scale)
+        t.needsUpdate = true
+      })
     }
     mat.userData = mat.userData || {}
     mat.userData.textureScale = scale
     mat.needsUpdate = true
   }
 
-  /** Load an image from URL as a texture and apply it as the base color map */
-  async applyTextureFromUrl(mat: AnyMaterial, url: string): Promise<void> {
+  async loadTexture(url: string, isColor: boolean): Promise<Texture> {
     return new Promise((resolve, reject) => {
-      const loader = new TextureLoader()
-      loader.load(
-        url,
-        (texture) => {
-          texture.colorSpace = SRGBColorSpace
-          texture.flipY = false
-          texture.wrapS = RepeatWrapping
-          texture.wrapT = RepeatWrapping
-
-          // Use standard explicit scaling instead of guessing mesh geometry
-          const scale = mat.userData?.textureScale ?? 2
-          texture.repeat.set(scale, scale)
-          texture.needsUpdate = true
-
-          if (mat instanceof MeshStandardMaterial) {
-            if (mat.map) mat.map.dispose()
-            mat.map = texture
-
-            // Reset color to white so texture is not multiplied/darkened
-            mat.color.set('#ffffff')
-
-            // Disable vertex colors — they can override/mask the texture
-            mat.vertexColors = false
-
-            mat.needsUpdate = true
-            mat.userData = mat.userData || {}
-            mat.userData.textureUrl = url
-          }
-          resolve()
-        },
-        undefined,
-        () => reject(new Error('Failed to load texture from url'))
-      )
+      new TextureLoader().load(url, tex => {
+        if (isColor) tex.colorSpace = SRGBColorSpace
+        tex.flipY = false
+        tex.wrapS = RepeatWrapping
+        tex.wrapT = RepeatWrapping
+        resolve(tex)
+      }, undefined, reject)
     })
+  }
+
+  /** Load PBR maps and apply to the material */
+  async applyPBRTexture(mat: AnyMaterial, texSet: PBRTextureSet): Promise<void> {
+    if (!(mat instanceof MeshStandardMaterial)) return
+
+    const tasks: Promise<any>[] = []
+
+    let diff: Texture, nor: Texture | undefined, rough: Texture | undefined, ao: Texture | undefined
+
+    tasks.push(this.loadTexture(texSet.diffuse, true).then(t => diff = t))
+    if (texSet.normal) tasks.push(this.loadTexture(texSet.normal, false).then(t => nor = t))
+    if (texSet.roughness) tasks.push(this.loadTexture(texSet.roughness, false).then(t => rough = t))
+    if (texSet.ao) tasks.push(this.loadTexture(texSet.ao, false).then(t => ao = t))
+
+    await Promise.all(tasks)
+    
+    this.applyPBRTextureLoaded(mat, texSet, { diff: diff!, nor, rough, ao })
+  }
+
+  /** Apply pre-loaded PBR textures to a material to avoid redundant network requests and memory bloat */
+  applyPBRTextureLoaded(
+    mat: AnyMaterial, 
+    texSet: PBRTextureSet, 
+    loadedMaps: { diff: Texture, nor?: Texture, rough?: Texture, ao?: Texture }
+  ): void {
+    if (!(mat instanceof MeshStandardMaterial)) return
+
+    const scale = mat.userData?.textureScale ?? 2
+
+    // Clone textures so they can have independent transforms/scales if needed later
+    const diff = loadedMaps.diff.clone()
+    const nor = loadedMaps.nor ? loadedMaps.nor.clone() : undefined
+    const rough = loadedMaps.rough ? loadedMaps.rough.clone() : undefined
+    const ao = loadedMaps.ao ? loadedMaps.ao.clone() : undefined
+
+    const maps = [diff, nor, rough, ao].filter(Boolean) as Texture[]
+    maps.forEach(t => {
+      t.repeat.set(scale, scale)
+      t.needsUpdate = true
+    })
+
+    if (mat.map) mat.map.dispose()
+    mat.map = diff
+    
+    if (mat.normalMap) mat.normalMap.dispose()
+    if (nor) mat.normalMap = nor
+
+    if (mat.roughnessMap) mat.roughnessMap.dispose()
+    if (rough) mat.roughnessMap = rough
+
+    if (mat.aoMap) mat.aoMap.dispose()
+    if (ao) mat.aoMap = ao
+
+    mat.color.set('#ffffff')
+    mat.vertexColors = false
+    mat.needsUpdate = true
+    
+    mat.userData = mat.userData || {}
+    mat.userData.textureSet = texSet
   }
 
   setVisibility(uuid: string, visible: boolean, objectMap: Map<string, Object3D>): void {
     const obj = objectMap.get(uuid)
     if (obj) obj.visible = visible
+  }
+
+  /** 
+   * Computes Box (Triplanar) UV mapping for a mesh to fix stretched textures 
+   * on meshes with missing or poorly scaled UVs.
+   */
+  applyBoxUV(mesh: Mesh): void {
+    if (mesh.userData?.boxUVApplied) return
+
+    try {
+      if (!mesh.geometry) return
+      const geo = mesh.geometry.clone()
+
+      geo.computeBoundingBox()
+
+      const posAttr = geo.attributes.position
+      let norAttr = geo.attributes.normal
+
+      if (!posAttr) return
+
+      // Attempt to compute normals if missing
+      if (!norAttr) {
+        geo.computeVertexNormals()
+        norAttr = geo.attributes.normal
+      }
+
+      // If still no normals, we cannot compute triplanar mapping safely
+      if (!norAttr || norAttr.count < posAttr.count) return
+
+      const uvArray = new Float32Array(posAttr.count * 2)
+
+      for (let i = 0; i < posAttr.count; i++) {
+        const x = posAttr.getX(i)
+        const y = posAttr.getY(i)
+        const z = posAttr.getZ(i)
+
+        const nx = Math.abs(norAttr.getX(i))
+        const ny = Math.abs(norAttr.getY(i))
+        const nz = Math.abs(norAttr.getZ(i))
+
+        let u = 0, v = 0
+        if (nx >= ny && nx >= nz) {
+          u = z; v = y
+        } else if (ny >= nx && ny >= nz) {
+          u = x; v = z
+        } else {
+          u = x; v = y
+        }
+
+        uvArray[i * 2] = u
+        uvArray[i * 2 + 1] = v
+      }
+
+      geo.setAttribute('uv', new BufferAttribute(uvArray, 2))
+      geo.attributes.uv.needsUpdate = true
+
+      mesh.geometry = geo
+      mesh.userData = mesh.userData || {}
+      mesh.userData.boxUVApplied = true
+      // Optional: oldGeo.dispose() could be called if it's not shared, 
+      // but to be safe with shared geometry in GLB we leave it to GC/ThreeJS.
+    } catch (err) {
+      console.warn('Failed to apply Box UV mapping:', err)
+    }
   }
 
   /** Update sceneNode visibility state recursively */

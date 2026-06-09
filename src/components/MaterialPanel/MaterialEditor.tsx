@@ -1,9 +1,37 @@
-import type { MaterialData } from '../../core/types'
+import type { MaterialData, PBRTextureSet } from '../../core/types'
+import { B2C_CATEGORIES } from '../../config/materialConfig'
+import { useMemo } from 'react'
 import styles from './MaterialEditor.module.css'
 
 // Scan all textures in the assets folder at build time
-const textureFiles = import.meta.glob('../../assets/textures/*.{jpg,png,webp,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
-const textureUrls = Object.values(textureFiles)
+const textureFiles = import.meta.glob('../../assets/textures/*/*/*.{jpg,png,webp,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
+
+const textureSetsRecord: Record<string, PBRTextureSet> = {}
+Object.entries(textureFiles).forEach(([path, url]) => {
+  const parts = path.split('/')
+  if (parts.length >= 4) {
+    const filename = parts.pop()!
+    const id = parts.pop()!
+    const category = parts.pop()! // e.g. "wall", "floor"
+    
+    if (!textureSetsRecord[id]) {
+      textureSetsRecord[id] = { id, category, diffuse: '' }
+    }
+    
+    const lower = filename.toLowerCase()
+    if (lower.includes('diff') || lower.includes('color') || lower.includes('albedo')) {
+      textureSetsRecord[id].diffuse = url
+    } else if (lower.includes('nor') || lower.includes('normal')) {
+      textureSetsRecord[id].normal = url
+    } else if (lower.includes('rough')) {
+      textureSetsRecord[id].roughness = url
+    } else if (lower.includes('ao') || lower.includes('ambient')) {
+      textureSetsRecord[id].ao = url
+    }
+  }
+})
+
+const ALL_TEXTURE_SETS = Object.values(textureSetsRecord).filter(t => t.diffuse)
 
 const KITCHEN_COLORS = [
   { name: 'Pure White', hex: '#FFFFFF' },
@@ -20,13 +48,26 @@ const KITCHEN_COLORS = [
 
 interface MaterialEditorProps {
   mat: MaterialData
+  activeGroupId?: string | null
   onUpdate: (patch: Partial<MaterialData>, skipUndo?: boolean) => void
-  onApplyTextureUrl: (url: string) => void
+  onApplyTextureSet: (tex: PBRTextureSet) => void
   onResetTexture: () => void
   onPushUndo: () => void
 }
 
-export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl, onResetTexture, onPushUndo }: MaterialEditorProps) {
+export function MaterialEditor({ mat, activeGroupId, onUpdate, onApplyTextureSet, onResetTexture, onPushUndo }: MaterialEditorProps) {
+  const availableTextures = useMemo(() => {
+    if (!activeGroupId) return ALL_TEXTURE_SETS
+    const catConfig = B2C_CATEGORIES.find(c => c.id === activeGroupId)
+    if (!catConfig) {
+      // isFallbackMode
+      return ALL_TEXTURE_SETS
+    }
+    if (catConfig.folderName) {
+      return ALL_TEXTURE_SETS.filter(t => t.category === catConfig.folderName)
+    }
+    return ALL_TEXTURE_SETS
+  }, [activeGroupId])
   return (
     <div className={styles.editor}>
       {/* ─── Base Color (Preset Swatches) ─── */}
@@ -53,20 +94,21 @@ export function MaterialEditor({ mat, onUpdate, onApplyTextureUrl, onResetTextur
       <div className={styles.gallery}>
         <div className={styles.galleryHeader}>
           <label className={styles.fieldLabel}>Textures</label>
-          {mat.textureUrl && (
+          {mat.textureSet && (
             <button className={styles.clearTexBtn} onClick={onResetTexture}>
               ✕ Clear Texture
             </button>
           )}
         </div>
         <div className={styles.grid}>
-          {textureUrls.map((url, i) => (
+          {availableTextures.map((tex) => (
             <img
-              key={i}
-              src={url}
-              alt={`Texture ${i}`}
-              className={`${styles.thumbnail} ${mat.textureUrl === url ? styles.active : ''}`}
-              onClick={() => onApplyTextureUrl(url)}
+              key={tex.id}
+              src={tex.diffuse}
+              alt={`Texture ${tex.id}`}
+              title={tex.id}
+              className={`${styles.thumbnail} ${mat.textureSet?.id === tex.id ? styles.active : ''}`}
+              onClick={() => onApplyTextureSet(tex)}
             />
           ))}
         </div>

@@ -59,6 +59,15 @@ export interface MeshInventoryItem {
   }
 }
 
+export interface PBRTextureSet {
+  id: string
+  category: string
+  diffuse: string
+  normal?: string
+  roughness?: string
+  ao?: string
+}
+
 /** Editable snapshot of a Three.js material */
 export interface MaterialData {
   uuid: string
@@ -73,7 +82,7 @@ export interface MaterialData {
   transparent: boolean
   hasMap: boolean
   mapPreviewUrl?: string
-  textureUrl?: string   // URL to the applied gallery texture
+  textureSet?: PBRTextureSet // PBR maps
   textureScale?: number // Texture tiling multiplier
 }
 

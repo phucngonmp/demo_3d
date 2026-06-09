@@ -90,13 +90,15 @@ export async function clearStoredFile(): Promise<void> {
 
 const OVERRIDES_KEY = 'glb-viewer:overrides'
 
+import type { PBRTextureSet } from './types'
+
 export interface MaterialOverride {
   color?: string
   roughness?: number
   metalness?: number
   emissive?: string
   opacity?: number
-  textureUrl?: string
+  textureSet?: PBRTextureSet
   textureScale?: number
 }
 

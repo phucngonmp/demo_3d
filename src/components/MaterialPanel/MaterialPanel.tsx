@@ -1,12 +1,13 @@
-import type { MaterialData } from '../../core/types'
+import type { MaterialData, PBRTextureSet } from '../../core/types'
 import { MaterialEditor } from './MaterialEditor'
 import styles from './MaterialPanel.module.css'
 
 interface MaterialPanelProps {
   material: MaterialData
   canUndo: boolean
+  activeGroupId: string | null
   onUpdateMaterial: (uuid: string, patch: Partial<MaterialData>, skipUndo?: boolean) => void
-  onApplyTextureUrl: (matUuid: string, url: string) => Promise<void>
+  onApplyTextureSet: (matUuid: string, texSet: PBRTextureSet) => Promise<void>
   onResetTexture: (matUuid: string) => void
   onUndo: () => void
   onPushUndo: () => void
@@ -15,8 +16,9 @@ interface MaterialPanelProps {
 export function MaterialPanel({
   material,
   canUndo,
+  activeGroupId,
   onUpdateMaterial,
-  onApplyTextureUrl,
+  onApplyTextureSet,
   onResetTexture,
   onUndo,
   onPushUndo,
@@ -44,8 +46,9 @@ export function MaterialPanel({
         {/* Editor */}
         <MaterialEditor
           mat={material}
+          activeGroupId={activeGroupId}
           onUpdate={(patch, skipUndo) => onUpdateMaterial(material.uuid, patch, skipUndo)}
-          onApplyTextureUrl={(url) => onApplyTextureUrl(material.uuid, url)}
+          onApplyTextureSet={(texSet) => onApplyTextureSet(material.uuid, texSet)}
           onResetTexture={() => onResetTexture(material.uuid)}
           onPushUndo={onPushUndo}
         />
