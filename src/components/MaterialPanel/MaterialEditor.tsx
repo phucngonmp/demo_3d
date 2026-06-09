@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import styles from './MaterialEditor.module.css'
 
 // Scan all textures in the assets folder at build time
-const textureFiles = import.meta.glob('../../assets/textures/*/*/*.{jpg,png,webp,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
+const textureFiles = import.meta.glob('../../assets/textures/*/*/*.{jpg,JPG,jpeg,JPEG,png,PNG,webp,WEBP,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 
 const textureSetsRecord: Record<string, PBRTextureSet> = {}
 Object.entries(textureFiles).forEach(([path, url]) => {
@@ -14,24 +14,31 @@ Object.entries(textureFiles).forEach(([path, url]) => {
     const id = parts.pop()!
     const category = parts.pop()! // e.g. "wall", "floor"
     
-    if (!textureSetsRecord[id]) {
-      textureSetsRecord[id] = { id, category, diffuse: '' }
+    const uniqueKey = `${category}/${id}`
+    
+    if (!textureSetsRecord[uniqueKey]) {
+      textureSetsRecord[uniqueKey] = { id: uniqueKey, category, diffuse: '' }
     }
     
     const lower = filename.toLowerCase()
-    if (lower.includes('diff') || lower.includes('color') || lower.includes('albedo')) {
-      textureSetsRecord[id].diffuse = url
-    } else if (lower.includes('nor') || lower.includes('normal')) {
-      textureSetsRecord[id].normal = url
+    if (lower.includes('diff') || lower.includes('color') || lower.includes('albedo') || lower.includes('_col')) {
+      textureSetsRecord[uniqueKey].diffuse = url
+    } else if (lower.includes('nor') || lower.includes('nrm')) {
+      textureSetsRecord[uniqueKey].normal = url
     } else if (lower.includes('rough')) {
-      textureSetsRecord[id].roughness = url
+      textureSetsRecord[uniqueKey].roughness = url
     } else if (lower.includes('ao') || lower.includes('ambient')) {
-      textureSetsRecord[id].ao = url
+      textureSetsRecord[uniqueKey].ao = url
     }
   }
 })
 
 const ALL_TEXTURE_SETS = Object.values(textureSetsRecord).filter(t => t.diffuse)
+console.log('--- DEBUG TEXTURE SETS ---', {
+  totalGlobFiles: Object.keys(textureFiles).length,
+  textureSetsRecord,
+  ALL_TEXTURE_SETS
+})
 
 const KITCHEN_COLORS = [
   { name: 'Pure White', hex: '#FFFFFF' },

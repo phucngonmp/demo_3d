@@ -8,6 +8,8 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   BufferAttribute,
+  ImageBitmapLoader,
+  CanvasTexture,
   type Object3D,
   type Texture,
 } from 'three'
@@ -16,6 +18,8 @@ import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem, PBRTextu
 type AnyMaterial = Material
 
 export class MaterialManager {
+  private textureCache: Map<string, Texture> = new Map()
+
   /** Build a recursive SceneNode tree from an Object3D root */
   extractSceneTree(root: Object3D): SceneNode[] {
     const buildNode = (obj: Object3D, depth: number): SceneNode => {
@@ -259,14 +263,44 @@ export class MaterialManager {
   }
 
   async loadTexture(url: string, isColor: boolean): Promise<Texture> {
+    if (this.textureCache.has(url)) {
+      return this.textureCache.get(url)!
+    }
+
     return new Promise((resolve, reject) => {
-      new TextureLoader().load(url, tex => {
-        if (isColor) tex.colorSpace = SRGBColorSpace
-        tex.flipY = false
-        tex.wrapS = RepeatWrapping
-        tex.wrapT = RepeatWrapping
-        resolve(tex)
-      }, undefined, reject)
+      const fallback = () => {
+        new TextureLoader().load(url, tex => {
+          if (isColor) tex.colorSpace = SRGBColorSpace
+          tex.flipY = false
+          tex.wrapS = RepeatWrapping
+          tex.wrapT = RepeatWrapping
+          this.textureCache.set(url, tex)
+          resolve(tex)
+        }, undefined, reject)
+      }
+
+      if (typeof createImageBitmap !== 'undefined') {
+        new ImageBitmapLoader().setOptions({ imageOrientation: 'none' }).load(
+          url,
+          (imageBitmap) => {
+            const tex = new Texture(imageBitmap)
+            if (isColor) tex.colorSpace = SRGBColorSpace
+            tex.flipY = false
+            tex.wrapS = RepeatWrapping
+            tex.wrapT = RepeatWrapping
+            tex.needsUpdate = true
+            this.textureCache.set(url, tex)
+            resolve(tex)
+          },
+          undefined,
+          (err) => {
+            console.warn('ImageBitmapLoader failed, falling back to TextureLoader:', err)
+            fallback()
+          }
+        )
+      } else {
+        fallback()
+      }
     })
   }
 
