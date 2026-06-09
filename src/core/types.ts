@@ -65,6 +65,7 @@ export interface MeshInventoryItem {
 export interface MaterialData {
   uuid: string
   name: string
+  displayName?: string
   type: string
   color: string         // hex e.g. '#ffffff'
   roughness: number     // 0–1

@@ -1,15 +1,11 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Viewport } from './components/Viewport/Viewport'
 import { Toolbar } from './components/Toolbar/Toolbar'
-import { InfoPanel } from './components/InfoPanel/InfoPanel'
 import { DropZone } from './components/DropZone/DropZone'
 import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
 import { MaterialListPanel } from './components/MaterialPanel/MaterialListPanel'
 import { useModelViewer } from './hooks/useModelViewer'
-// Remove unused import
 import styles from './App.module.css'
-
-type RightTab = 'properties' | 'materials'
 
 const RIGHT_MIN_WIDTH = 220
 const RIGHT_MAX_WIDTH = 520
@@ -23,8 +19,8 @@ function clamp(value: number, min: number, max: number) {
 function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [activeTab, setActiveTab] = useState<RightTab>('properties')
   const [activeMaterialUuid, setActiveMaterialUuid] = useState<string | null>(null)
+  const pointerDownPos = useRef({ x: 0, y: 0 })
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300)
   const rightSidebarWidthRef = useRef(rightSidebarWidth)
   const resizeFrameRef = useRef<number | null>(null)
@@ -52,30 +48,18 @@ function App() {
     toggleCameraMode,
     changeEnvMode,
     changeWeatherMode,
-    getGroupIdForNode,
   } = useModelViewer(containerRef)
 
-  // Auto-switch to edit tab and select material when an object is clicked in 3D
-  useEffect(() => {
-    if (selectedNodeUuid) {
-      const groupId = getGroupIdForNode(selectedNodeUuid)
-      if (groupId) {
-        setActiveMaterialUuid(groupId)
-        setActiveTab('materials')
-      } else {
-        setActiveTab('properties')
-      }
-    }
-  }, [selectedNodeUuid, getGroupIdForNode])
+  // Selected group logic handled via UI now
 
   // Sync 3D selection highlight when a material is active
   useEffect(() => {
-    if (activeTab === 'materials' && activeMaterialUuid) {
+    if (activeMaterialUuid) {
       selectMaterial(activeMaterialUuid)
     } else {
       selectNode(selectedNodeUuid)
     }
-  }, [activeTab, activeMaterialUuid, selectMaterial, selectNode, selectedNodeUuid])
+  }, [activeMaterialUuid, selectMaterial, selectNode, selectedNodeUuid])
 
   const handleDragStateChange = useCallback((dragging: boolean) => {
     setIsDragOver(dragging)
@@ -156,7 +140,17 @@ function App() {
       <div className={styles.workArea}>
 
         {/* Center: 3D Viewport */}
-        <div className={styles.viewportWrapper}>
+        <div 
+          className={styles.viewportWrapper}
+          onPointerDown={(e) => { pointerDownPos.current = { x: e.clientX, y: e.clientY } }}
+          onPointerUp={(e) => {
+            const dx = e.clientX - pointerDownPos.current.x
+            const dy = e.clientY - pointerDownPos.current.y
+            if (Math.hypot(dx, dy) < 5 && e.button === 0) {
+              setActiveMaterialUuid(null)
+            }
+          }}
+        >
           <Viewport containerRef={containerRef} isDragOver={isDragOver} />
 
           {/* Empty state */}
@@ -191,7 +185,7 @@ function App() {
           )}
         </div>
 
-        {/* Right: tab switcher (Properties | Materials) */}
+        {/* Right: Materials panel */}
         <div
           className={`${styles.resizeHandle} ${styles.rightResizeHandle}`}
           onPointerDown={(event) => startResize(event)}
@@ -203,41 +197,24 @@ function App() {
           className={styles.rightSidebar}
           style={{ width: `${rightSidebarWidth}px` }}
         >
-          {/* Tab bar */}
+          {/* Header */}
           <div className={styles.tabBar}>
-            <button
-              id="tab-properties"
-              className={`${styles.tab} ${activeTab === 'properties' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('properties')}
-            >
-              Properties
-            </button>
-            <button
-              id="tab-materials"
-              className={`${styles.tab} ${activeTab === 'materials' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('materials')}
-            >
+            <div className={`${styles.tab} ${styles.tabActive}`} style={{ pointerEvents: 'none' }}>
               Materials
               {materialMap.size > 0 && (
                 <span className={styles.tabBadge}>{materialMap.size}</span>
               )}
-            </button>
+            </div>
           </div>
 
-          {/* Tab content */}
+          {/* Content */}
           <div className={styles.tabContent}>
-            {activeTab === 'properties' ? (
-              <InfoPanel
-                modelInfo={state.modelInfo}
-                isLoading={state.isLoading}
-              />
-            ) : activeTab === 'materials' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ flex: activeMaterialUuid ? '0 0 30%' : 1, minHeight: 0, overflowY: 'auto' }}>
                   <MaterialListPanel
                     materials={materialMap}
                     activeMaterialUuid={activeMaterialUuid}
-                    onSelect={(uuid) => setActiveMaterialUuid(uuid)}
+                    onSelect={(uuid) => setActiveMaterialUuid(prev => prev === uuid ? null : uuid)}
                   />
                 </div>
                 {activeMaterialUuid && materialMap.has(activeMaterialUuid) && (
@@ -254,7 +231,6 @@ function App() {
                   </div>
                 )}
               </div>
-            ) : null}
           </div>
         </div>
       </div>

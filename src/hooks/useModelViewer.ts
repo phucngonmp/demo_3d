@@ -18,16 +18,40 @@ import {
 import { useTheme } from '../context/useTheme'
 import type { ViewerState, SceneNode, MaterialData, EnvMode, WeatherMode } from '../core/types'
 import defaultModelUrl from '../assets/glb/basic_kitchen.glb?url'
+import { B2C_CATEGORIES } from '../config/materialConfig'
 
-// Hàm trợ giúp để lấy Tên gốc (bỏ đuôi số)
-const getBaseName = (name: string) => name.replace(/(\.|_)\d+$/, '').trim()
+const getGroupIdForMaterialName = (matName: string): string | null => {
+  const matNameLower = matName.toLowerCase()
+  for (const cat of B2C_CATEGORIES) {
+    if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
+      return cat.id
+    }
+  }
+  return null
+}
 
 const rebuildGroupMap = (matMap: Map<string, MaterialData>) => {
   const groupMap = new Map<string, MaterialData>()
   for (const m of Array.from(matMap.values())) {
-    const baseName = getBaseName(m.name)
-    if (!groupMap.has(baseName)) {
-       groupMap.set(baseName, { ...m, uuid: baseName, name: baseName, type: 'Group' })
+    const matNameLower = m.name.toLowerCase()
+    
+    let matchedCat = null
+    for (const cat of B2C_CATEGORIES) {
+      if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
+        matchedCat = cat
+        break
+      }
+    }
+    
+    if (matchedCat && !groupMap.has(matchedCat.id)) {
+       groupMap.set(matchedCat.id, { 
+         ...m, 
+         uuid: matchedCat.id, 
+         name: matchedCat.displayName, 
+         displayName: matchedCat.displayName, 
+         color: matchedCat.color,
+         type: 'Group' 
+       })
     }
   }
   return groupMap
@@ -54,7 +78,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const currentModelRef = useRef<Object3D | null>(null)
   const objectMapRef = useRef<Map<string, Object3D>>(new Map())
   const materialObjectMapRef = useRef<Map<string, Material>>(new Map())
-  const pointerDownRef = useRef<{ x: number; y: number } | null>(null)
 
   // React state
   const [state, setState] = useState<ViewerState>(DEFAULT_STATE)
@@ -367,53 +390,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneRef.current?.setSelectedObject(uuid ? objectMapRef.current.get(uuid) ?? null : null)
   }, [])
 
-  useEffect(() => {
-    const scene = sceneRef.current
-    const canvas = scene?.renderer.domElement
-    if (!scene || !canvas) return
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return
-      pointerDownRef.current = { x: event.clientX, y: event.clientY }
-    }
-
-    const handlePointerUp = (event: PointerEvent) => {
-      const start = pointerDownRef.current
-      pointerDownRef.current = null
-      if (!start || event.button !== 0) return
-
-      const dx = event.clientX - start.x
-      const dy = event.clientY - start.y
-      if (Math.hypot(dx, dy) > 5) return
-
-      const model = currentModelRef.current
-      if (!model) return
-
-      const picked = scene.pickObjectAt(event.clientX, event.clientY, model)
-      selectNode(picked?.uuid ?? null)
-    }
-
-    canvas.addEventListener('pointerdown', handlePointerDown)
-    canvas.addEventListener('pointerup', handlePointerUp)
-
-    const handleDoubleClick = (event: MouseEvent) => {
-      if (controllerRef.current?.mode !== 'interior') return
-      const model = currentModelRef.current
-      if (!model) return
-
-      const hitPoint = scene.raycastPoint(event.clientX, event.clientY, model)
-      if (hitPoint) {
-        controllerRef.current.teleportTo(hitPoint.x, hitPoint.z)
-      }
-    }
-    canvas.addEventListener('dblclick', handleDoubleClick)
-
-    return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown)
-      canvas.removeEventListener('pointerup', handlePointerUp)
-      canvas.removeEventListener('dblclick', handleDoubleClick)
-    }
-  }, [selectNode])
 
   const toggleObjectVisibility = useCallback((uuid: string, visible: boolean) => {
     const manager = materialManagerRef.current
@@ -458,7 +434,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         if (child instanceof Mesh) {
           const mArr = Array.isArray(child.material) ? child.material : [child.material]
           mArr.forEach(m => {
-            if (getBaseName(m.name) === groupId) {
+            if (getGroupIdForMaterialName(m.name) === groupId) {
               // Ensure uniqueness if shared material
               child.material = manager.isolateMaterialToObject(model, child, m.uuid)
               targetMats.add(child.material)
@@ -530,7 +506,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getBaseName(m.name) === groupId) {
+          if (getGroupIdForMaterialName(m.name) === groupId) {
             child.material = manager.isolateMaterialToObject(model, child, m.uuid)
             targetMats.add(child.material)
           }
@@ -598,7 +574,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getBaseName(m.name) === groupId) {
+          if (getGroupIdForMaterialName(m.name) === groupId) {
             child.material = manager.isolateMaterialToObject(model, child, m.uuid)
             targetMats.add(child.material)
           }
@@ -721,7 +697,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
        if (child instanceof Mesh) {
           const mArr = Array.isArray(child.material) ? child.material : [child.material]
           mArr.forEach(m => {
-             if (getBaseName(m.name) === groupId) mNames.push(m.name)
+            if (getGroupIdForMaterialName(m.name) === groupId) {
+              mNames.push(m.name)
+            }
           })
        }
     })
@@ -732,7 +710,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
      const obj = objectMapRef.current.get(nodeUuid);
      if(!(obj instanceof Mesh)) return null;
      const mArr = Array.isArray(obj.material) ? obj.material : [obj.material]
-     if (mArr.length > 0) return getBaseName(mArr[0].name)
+     if (mArr.length > 0) {
+       return getGroupIdForMaterialName(mArr[0].name)
+     }
      return null;
   }, [])
 

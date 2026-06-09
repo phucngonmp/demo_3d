@@ -43,7 +43,7 @@ export function MaterialListPanel({ materials, activeMaterialUuid, onSelect }: M
               id={`mat-${mat.uuid}`}
               className={styles.matRow}
               onClick={() => onSelect(mat.uuid)}
-              title="Click to edit"
+              title="Click to select, double-click name to edit"
               style={{
                 backgroundColor: mat.uuid === activeMaterialUuid ? 'var(--accent)' : 'transparent',
                 color: mat.uuid === activeMaterialUuid ? '#ffffff' : 'inherit',
@@ -55,9 +55,9 @@ export function MaterialListPanel({ materials, activeMaterialUuid, onSelect }: M
                 style={{ background: mat.color }}
               />
               <span className={styles.matName}>
-                {mat.name || 'Material'}
+                {mat.displayName || mat.name || 'Material'}
               </span>
-              <span className={styles.typeBadge}>
+              <span className={styles.typeBadge} style={{ marginLeft: 'auto' }}>
                 {mat.type.replace('Material', '')}
               </span>
               {mat.hasMap && (
@@ -65,20 +65,6 @@ export function MaterialListPanel({ materials, activeMaterialUuid, onSelect }: M
                   ▦
                 </span>
               )}
-              {/* Mũi tên chỉ sang phải (Edit) thay vì xổ xuống */}
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                className={styles.chevron}
-                style={{ transform: 'rotate(270deg)' }}
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
             </button>
           </div>
         )
