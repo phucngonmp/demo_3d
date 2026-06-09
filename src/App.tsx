@@ -47,7 +47,6 @@ function App() {
     changeExposure,
     toggleCameraMode,
     changeEnvMode,
-    changeWeatherMode,
   } = useModelViewer(containerRef)
 
   // Selected group logic handled via UI now
@@ -131,9 +130,7 @@ function App() {
         onChangeExposure={changeExposure}
         onToggleCameraMode={toggleCameraMode}
         envMode={state.envMode}
-        weatherMode={state.weatherMode}
         onChangeEnvMode={changeEnvMode}
-        onChangeWeatherMode={changeWeatherMode}
       />
 
       {/* ── Work area: center | right ── */}

@@ -16,11 +16,15 @@ import {
   type MaterialOverride,
 } from '../core/FileStorage'
 import { useTheme } from '../context/useTheme'
-import type { ViewerState, SceneNode, MaterialData, EnvMode, WeatherMode } from '../core/types'
+import type { ViewerState, SceneNode, MaterialData, EnvMode } from '../core/types'
 import defaultModelUrl from '../assets/glb/basic_kitchen.glb?url'
 import { B2C_CATEGORIES } from '../config/materialConfig'
 
-const getGroupIdForMaterialName = (matName: string): string | null => {
+const getBaseName = (name: string) => name.replace(/\.\d+$/, '')
+
+const getGroupIdForMaterialName = (matName: string, isFallback: boolean): string | null => {
+  if (isFallback) return getBaseName(matName)
+
   const matNameLower = matName.toLowerCase()
   for (const cat of B2C_CATEGORIES) {
     if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
@@ -54,7 +58,19 @@ const rebuildGroupMap = (matMap: Map<string, MaterialData>) => {
        })
     }
   }
-  return groupMap
+
+  // Fallback if empty
+  if (groupMap.size === 0) {
+    for (const m of Array.from(matMap.values())) {
+      const baseName = getBaseName(m.name)
+      if (!groupMap.has(baseName)) {
+        groupMap.set(baseName, { ...m, uuid: baseName, name: baseName, displayName: baseName, type: 'Group' })
+      }
+    }
+    return { groupMap, isFallback: true }
+  }
+
+  return { groupMap, isFallback: false }
 }
 const DEFAULT_STATE: ViewerState = {
   isLoading: false,
@@ -66,7 +82,6 @@ const DEFAULT_STATE: ViewerState = {
   exposure: 1.0,
   cameraMode: 'interior',
   envMode: 'city',
-  weatherMode: 'clear',
 }
 
 export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -78,6 +93,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   const currentModelRef = useRef<Object3D | null>(null)
   const objectMapRef = useRef<Map<string, Object3D>>(new Map())
   const materialObjectMapRef = useRef<Map<string, Material>>(new Map())
+  const isFallbackModeRef = useRef(false)
 
   // React state
   const [state, setState] = useState<ViewerState>(DEFAULT_STATE)
@@ -225,7 +241,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       console.log("%c🔥 ALL MATERIAL NAMES IN THIS MODEL:", "color: #00ff00; font-size: 14px; font-weight: bold;")
       console.log(Array.from(matMap.values()).map(m => m.name).filter((v, i, a) => a.indexOf(v) === i))
 
-      const groupMap = rebuildGroupMap(matMap)
+      const { groupMap, isFallback } = rebuildGroupMap(matMap)
+      isFallbackModeRef.current = isFallback
 
       objectMapRef.current = manager.buildObjectMap(object)
       materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
@@ -295,7 +312,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
         // Rebuild UI state to reflect restored overrides
         setSceneNodes(manager.extractSceneTree(object))
-        setMaterialMap(manager.extractMaterials(object))
+        setMaterialMap(rebuildGroupMap(manager.extractMaterials(object)).groupMap)
         materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
       }
     } catch (err) {
@@ -434,7 +451,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         if (child instanceof Mesh) {
           const mArr = Array.isArray(child.material) ? child.material : [child.material]
           mArr.forEach(m => {
-            if (getGroupIdForMaterialName(m.name) === groupId) {
+            if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
               // Ensure uniqueness if shared material
               child.material = manager.isolateMaterialToObject(model, child, m.uuid)
               targetMats.add(child.material)
@@ -506,7 +523,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getGroupIdForMaterialName(m.name) === groupId) {
+          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
             child.material = manager.isolateMaterialToObject(model, child, m.uuid)
             targetMats.add(child.material)
           }
@@ -574,7 +591,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getGroupIdForMaterialName(m.name) === groupId) {
+          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
             child.material = manager.isolateMaterialToObject(model, child, m.uuid)
             targetMats.add(child.material)
           }
@@ -634,7 +651,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
     materialObjectMapRef.current = manager.buildMaterialObjectMap(model)
     setSceneNodes(manager.extractSceneTree(model))
-    setMaterialMap(rebuildGroupMap(manager.extractMaterials(model)))
+    setMaterialMap(rebuildGroupMap(manager.extractMaterials(model)).groupMap)
 
     // Lưu lại LocalStorage ngay lập tức sau khi Undo
     if (autosaveRef.current && currentFileNameRef.current) {
@@ -677,11 +694,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneRef.current?.setEnvironmentMode(envMode)
   }, [])
 
-  const changeWeatherMode = useCallback((weatherMode: WeatherMode) => {
-    setState(prev => ({ ...prev, weatherMode }))
-    sceneRef.current?.setWeatherMode(weatherMode)
-  }, [])
-
   const uploadBackground = useCallback((file: File) => {
     const url = URL.createObjectURL(file)
     sceneRef.current?.setBackgroundImage(url)
@@ -689,7 +701,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
   const selectMaterial = useCallback((groupId: string | null) => {
     if (!groupId) {
-       sceneRef.current?.setSelectedMaterial(null)
+       // sceneRef.current?.setSelectedMaterial(null)
        return
     }
     const mNames: string[] = []
@@ -697,13 +709,14 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
        if (child instanceof Mesh) {
           const mArr = Array.isArray(child.material) ? child.material : [child.material]
           mArr.forEach(m => {
-            if (getGroupIdForMaterialName(m.name) === groupId) {
+            if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
               mNames.push(m.name)
             }
           })
        }
     })
-    sceneRef.current?.setSelectedMaterialsByName(mNames)
+    // Disable highlighting selected group as requested by user
+    // sceneRef.current?.setSelectedMaterialsByName(mNames)
   }, [])
 
   const getGroupIdForNode = useCallback((nodeUuid: string): string | null => {
@@ -711,7 +724,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
      if(!(obj instanceof Mesh)) return null;
      const mArr = Array.isArray(obj.material) ? obj.material : [obj.material]
      if (mArr.length > 0) {
-       return getGroupIdForMaterialName(mArr[0].name)
+       return getGroupIdForMaterialName(mArr[0].name, isFallbackModeRef.current)
      }
      return null;
   }, [])
@@ -740,7 +753,6 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     changeExposure,
     toggleCameraMode,
     changeEnvMode,
-    changeWeatherMode,
     uploadBackground,
     getGroupIdForNode,
   }

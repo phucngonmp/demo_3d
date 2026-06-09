@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useTheme } from '../../context/useTheme'
 import styles from './Toolbar.module.css'
-import type { EnvMode, WeatherMode } from '../../core/types'
+import type { EnvMode } from '../../core/types'
 
 interface ToolbarProps {
   wireframe: boolean
@@ -17,9 +17,7 @@ interface ToolbarProps {
   onChangeExposure: (val: number) => void
   onToggleCameraMode: () => void
   envMode: EnvMode
-  weatherMode: WeatherMode
   onChangeEnvMode: (mode: EnvMode) => void
-  onChangeWeatherMode: (mode: WeatherMode) => void
 }
 
 export function Toolbar({
@@ -36,9 +34,7 @@ export function Toolbar({
   onChangeExposure,
   onToggleCameraMode,
   envMode,
-  weatherMode,
   onChangeEnvMode,
-  onChangeWeatherMode,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
@@ -128,23 +124,7 @@ export function Toolbar({
         <option value="sunset">Sunset (HDRI)</option>
         <option value="room">Studio (No Env)</option>
         <option value="neutral">Neutral</option>
-      </select>
-
-      <select 
-        className={styles.btnToggle}
-        value={weatherMode}
-        onChange={(e) => onChangeWeatherMode(e.target.value as WeatherMode)}
-        title="Weather Effects"
-        style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '4px 8px', color: 'inherit' }}
-      >
-        <option value="clear">No Weather</option>
-        <option value="rain">Rain Effect</option>
-        <option value="snow">Snow Effect</option>
-      </select>
-
-
-
-      <div className={styles.spacer} />
+      </select>      <div className={styles.spacer} />
 
       {/* Clear model */}
       {hasModel && (

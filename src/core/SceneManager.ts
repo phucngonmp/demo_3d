@@ -21,10 +21,6 @@ import {
   ACESFilmicToneMapping,
   type Object3D,
   Box3,
-  Points,
-  BufferGeometry,
-  Float32BufferAttribute,
-  PointsMaterial,
   Material,
   TextureLoader,
 } from 'three'
@@ -45,7 +41,6 @@ export class SceneManager {
   private raycaster = new Raycaster()
   private pointer = new Vector2()
   private theme: 'dark' | 'light' = 'dark'
-  private weatherSystem: Points | null = null
   private currentEnv: string = ''
   private resizeObserver: ResizeObserver | null = null
   private resizeFrameId: number | null = null
@@ -199,7 +194,6 @@ export class SceneManager {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate)
       onFrame?.()
-      this.updateWeather()
       this.renderer.render(this.scene, this.camera)
     }
     animate()
@@ -471,62 +465,4 @@ export class SceneManager {
     })
   }
 
-  setWeatherMode(mode: 'clear' | 'rain' | 'snow'): void {
-    if (this.weatherSystem) {
-      this.scene.remove(this.weatherSystem)
-      this.weatherSystem.geometry.dispose()
-        ; (this.weatherSystem.material as Material).dispose()
-      this.weatherSystem = null
-    }
-
-    if (mode === 'clear') return
-
-    const particleCount = mode === 'rain' ? 25000 : 10000
-    const geometry = new BufferGeometry()
-    const positions = new Float32Array(particleCount * 3)
-    const velocities = []
-    const range = 3000 // Tầm rơi bao phủ 3000 mét
-
-    for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * range
-      positions[i * 3 + 1] = Math.random() * range
-      positions[i * 3 + 2] = (Math.random() - 0.5) * range
-
-      velocities.push({
-        y: mode === 'rain' ? -(Math.random() * 20 + 20) : -(Math.random() * 2 + 1), // Mưa rơi nhanh, tuyết rơi chậm lất phất
-        x: mode === 'rain' ? 0 : (Math.random() - 0.5) * 1,
-      })
-    }
-    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
-
-    const material = new PointsMaterial({
-      color: mode === 'rain' ? 0xaaaaaa : 0xffffff,
-      size: mode === 'rain' ? 5.0 : 12.0,
-      transparent: true,
-      opacity: 0.6,
-      sizeAttenuation: true
-    })
-
-    this.weatherSystem = new Points(geometry, material)
-    this.weatherSystem.userData = { velocities, mode, range }
-    this.scene.add(this.weatherSystem)
-  }
-
-  private updateWeather(): void {
-    if (!this.weatherSystem) return
-    const positions = this.weatherSystem.geometry.attributes.position.array as Float32Array
-    const velocities = this.weatherSystem.userData.velocities
-    const range = this.weatherSystem.userData.range
-
-    for (let i = 0; i < velocities.length; i++) {
-      positions[i * 3] += velocities[i].x
-      positions[i * 3 + 1] += velocities[i].y
-
-      if (positions[i * 3 + 1] < -100) { // Khi rơi qua gầm thì tái sinh trên trời
-        positions[i * 3 + 1] = range
-        positions[i * 3] = (Math.random() - 0.5) * range
-      }
-    }
-    this.weatherSystem.geometry.attributes.position.needsUpdate = true
-  }
 }

@@ -9,7 +9,7 @@ export class CameraController {
   controls: OrbitControls
   mode: CameraMode = 'orbit'
   private boundingBox: Box3 | null = null
-  private keys = { forward: false, backward: false, left: false, right: false }
+  private keys = { forward: false, backward: false, left: false, right: false, up: false, down: false }
   private cleanupListeners: (() => void) | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private lastTime = performance.now()
@@ -33,6 +33,8 @@ export class CameraController {
         case 'KeyS': case 'ArrowDown': this.keys.backward = true; e.preventDefault(); break;
         case 'KeyA': case 'ArrowLeft': this.keys.left = true; e.preventDefault(); break;
         case 'KeyD': case 'ArrowRight': this.keys.right = true; e.preventDefault(); break;
+        case 'KeyQ': case 'Space': this.keys.up = true; e.preventDefault(); break;
+        case 'KeyE': case 'ShiftLeft': case 'ShiftRight': this.keys.down = true; e.preventDefault(); break;
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
@@ -42,6 +44,8 @@ export class CameraController {
         case 'KeyS': case 'ArrowDown': this.keys.backward = false; e.preventDefault(); break;
         case 'KeyA': case 'ArrowLeft': this.keys.left = false; e.preventDefault(); break;
         case 'KeyD': case 'ArrowRight': this.keys.right = false; e.preventDefault(); break;
+        case 'KeyQ': case 'Space': this.keys.up = false; e.preventDefault(); break;
+        case 'KeyE': case 'ShiftLeft': case 'ShiftRight': this.keys.down = false; e.preventDefault(); break;
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -67,16 +71,20 @@ export class CameraController {
     if (!this.boundingBox) return
 
     let moveX = 0
+    let moveY = 0
     let moveZ = 0
     if (this.keys.forward) moveZ += 1
     if (this.keys.backward) moveZ -= 1
     if (this.keys.left) moveX -= 1
     if (this.keys.right) moveX += 1
+    if (this.keys.up) moveY += 1
+    if (this.keys.down) moveY -= 1
 
-    if (moveX === 0 && moveZ === 0) return
+    if (moveX === 0 && moveY === 0 && moveZ === 0) return
 
-    const len = Math.sqrt(moveX * moveX + moveZ * moveZ)
+    const len = Math.sqrt(moveX * moveX + moveY * moveY + moveZ * moveZ)
     moveX /= len
+    moveY /= len
     moveZ /= len
 
     const cam = this.controls.object as PerspectiveCamera
@@ -102,20 +110,27 @@ export class CameraController {
     const nextPos = cam.position.clone()
     nextPos.addScaledVector(forward, moveZ * dist)
     nextPos.addScaledVector(right, moveX * dist)
+    nextPos.y += moveY * dist
 
     // Khong cho di xuyen tuong, padding giu nguoi ben trong
     const paddingX = Math.min(-0.2, -(this.boundingBox.max.x - this.boundingBox.min.x) * 0.05)
+    const paddingY = Math.min(-0.2, -(this.boundingBox.max.y - this.boundingBox.min.y) * 0.05)
     const paddingZ = Math.min(-0.2, -(this.boundingBox.max.z - this.boundingBox.min.z) * 0.05)
 
     const clampedX = Math.max(this.boundingBox.min.x - paddingX, Math.min(this.boundingBox.max.x + paddingX, nextPos.x))
+    const clampedY = Math.max(this.boundingBox.min.y - paddingY, Math.min(this.boundingBox.max.y + paddingY, nextPos.y))
     const clampedZ = Math.max(this.boundingBox.min.z - paddingZ, Math.min(this.boundingBox.max.z + paddingZ, nextPos.z))
 
     const actualDX = clampedX - cam.position.x
+    const actualDY = clampedY - cam.position.y
     const actualDZ = clampedZ - cam.position.z
 
     cam.position.x += actualDX
+    cam.position.y += actualDY
     cam.position.z += actualDZ
+    
     this.controls.target.x += actualDX
+    this.controls.target.y += actualDY
     this.controls.target.z += actualDZ
   }
 
@@ -150,7 +165,7 @@ export class CameraController {
 
       // Đặt vị trí xuất phát ở chính giữa phòng (tâm Bounding Box)
       camera.position.set(center.x, eyeLevelY, center.z)
-      
+
       // MẸO GIẢ LẬP FPS VỚI ORBITCONTROLS: 
       // Đặt target cực kỳ gần với camera (cách 0.01 đơn vị) phía trước mặt.
       // Nhờ đó khi kéo chuột, camera không bị "dịch chuyển 1 đoạn" quay quanh trung tâm nhà, 
@@ -213,7 +228,7 @@ export class CameraController {
     try {
       const state = JSON.parse(stateStr)
       if (state.mode && state.mode !== this.mode) return false
-      
+
       const cam = this.controls.object as PerspectiveCamera
       cam.position.fromArray(state.position)
       this.controls.target.fromArray(state.target)
@@ -244,11 +259,11 @@ export class CameraController {
   teleportTo(x: number, z: number): void {
     if (this.mode !== 'interior') return
     const cam = this.controls.object as PerspectiveCamera
-    
+
     // Tính toán độ dời
     const dx = x - cam.position.x
     const dz = z - cam.position.z
-    
+
     cam.position.x += dx
     cam.position.z += dz
     this.controls.target.x += dx

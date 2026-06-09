@@ -30,11 +30,9 @@ export interface ViewerState {
   exposure: number
   cameraMode: 'orbit' | 'interior'
   envMode: EnvMode
-  weatherMode: WeatherMode
 }
 
 export type EnvMode = 'room' | 'neutral' | 'sunset' | 'city'
-export type WeatherMode = 'clear' | 'rain' | 'snow'
 
 /** One node in the scene object hierarchy tree */
 export interface SceneNode {
