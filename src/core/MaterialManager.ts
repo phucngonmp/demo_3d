@@ -9,9 +9,8 @@ import {
   SRGBColorSpace,
   BufferAttribute,
   ImageBitmapLoader,
-  CanvasTexture,
+  Texture,
   type Object3D,
-  type Texture,
 } from 'three'
 import type { SceneNode, MaterialData, MeshCategory, MeshInventoryItem, PBRTextureSet } from './types'
 
