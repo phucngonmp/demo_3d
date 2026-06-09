@@ -134,6 +134,7 @@ export class CameraController {
   }
 
   fitToObject(object: Object3D, camera: PerspectiveCamera): void {
+    object.updateMatrixWorld(true)
     const box = new Box3().setFromObject(object)
     this.boundingBox = box
     const center = new Vector3()

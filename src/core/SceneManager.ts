@@ -332,6 +332,57 @@ export class SceneManager {
     this.scene.add(group)
   }
 
+  setSelectedMaterialsByName(materialNames: string[]): void {
+    this.clearSelection()
+    if (!materialNames || materialNames.length === 0) return
+
+    const color = this.getSelectionColor()
+    const group = new Group()
+    const lineMaterial = new LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    })
+    this.selectionLineMaterial = lineMaterial
+
+    let hasSelection = false
+
+    this.scene.traverse((child) => {
+      if (!(child instanceof Mesh) || !child.visible) return
+
+      let hasMat = false
+      if (Array.isArray(child.material)) {
+        if (child.material.some((m) => materialNames.some(k => m.name.toLowerCase().includes(k.toLowerCase())))) hasMat = true
+      } else if (child.material && materialNames.some(k => child.material.name.toLowerCase().includes(k.toLowerCase()))) {
+        hasMat = true
+      }
+
+      if (hasMat) {
+        hasSelection = true
+        const edgesGeometry = new EdgesGeometry(child.geometry, 25)
+        this.selectionEdgeGeometries.push(edgesGeometry)
+        const outline = new LineSegments(edgesGeometry, lineMaterial)
+        outline.matrixAutoUpdate = false
+        outline.matrix.copy(child.matrixWorld)
+        outline.renderOrder = 999
+        group.add(outline)
+
+        const box = new BoxHelper(child, color)
+        box.renderOrder = 1000
+        box.material.depthTest = false
+        box.material.transparent = true
+        this.selectionBoxes.push(box)
+        group.add(box)
+      }
+    })
+
+    if (!hasSelection) return
+
+    this.selectionGroup = group
+    this.scene.add(group)
+  }
+
   clearSelection(): void {
     if (this.selectionGroup) {
       this.scene.remove(this.selectionGroup)

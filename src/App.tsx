@@ -6,7 +6,7 @@ import { DropZone } from './components/DropZone/DropZone'
 import { MaterialPanel } from './components/MaterialPanel/MaterialPanel'
 import { MaterialListPanel } from './components/MaterialPanel/MaterialListPanel'
 import { useModelViewer } from './hooks/useModelViewer'
-import type { SceneNode } from './core/types'
+// Remove unused import
 import styles from './App.module.css'
 
 type RightTab = 'properties' | 'materials'
@@ -31,7 +31,6 @@ function App() {
 
   const {
     state,
-    sceneNodes,
     materialMap,
     selectedNodeUuid,
     autosave,
@@ -53,31 +52,21 @@ function App() {
     toggleCameraMode,
     changeEnvMode,
     changeWeatherMode,
+    getGroupIdForNode,
   } = useModelViewer(containerRef)
 
   // Auto-switch to edit tab and select material when an object is clicked in 3D
   useEffect(() => {
     if (selectedNodeUuid) {
-      function findNode(nodes: SceneNode[], uuid: string): SceneNode | null {
-        for (const node of nodes) {
-          if (node.uuid === uuid) return node
-          const found = findNode(node.children, uuid)
-          if (found) return found
-        }
-        return null
-      }
-
-      const node = findNode(sceneNodes, selectedNodeUuid)
-      if (node && node.materialIds.length > 0) {
-        // Select the first material of the mesh and switch to materials tab
-        setActiveMaterialUuid(node.materialIds[0])
+      const groupId = getGroupIdForNode(selectedNodeUuid)
+      if (groupId) {
+        setActiveMaterialUuid(groupId)
         setActiveTab('materials')
       } else {
-        // If it's an empty group/object, just show properties
         setActiveTab('properties')
       }
     }
-  }, [selectedNodeUuid, sceneNodes])
+  }, [selectedNodeUuid, getGroupIdForNode])
 
   // Sync 3D selection highlight when a material is active
   useEffect(() => {
