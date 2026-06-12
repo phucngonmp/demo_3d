@@ -27,7 +27,7 @@ const getGroupIdForMaterialName = (matName: string, isFallback: boolean, configG
 
   const matNameLower = matName.toLowerCase()
   for (const cat of configGroups) {
-    if (cat.keywords.some((kw: string) => matNameLower.includes(kw.toLowerCase()))) {
+    if (cat.keywords && Array.isArray(cat.keywords) && cat.keywords.some((kw: string) => matNameLower.includes(kw.toLowerCase()))) {
       return cat.id
     }
   }
@@ -101,7 +101,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
   // React state
   const [state, setState] = useState<ViewerState>(DEFAULT_STATE)
-  const [sceneNodes, setSceneNodes] = useState<SceneNode[]>([])
+  const [, setSceneNodes] = useState<SceneNode[]>([])
   const [materialMap, setMaterialMap] = useState<Map<string, MaterialData>>(new Map())
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -344,8 +344,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
         // Rebuild UI state to reflect restored overrides
         setSceneNodes(manager.extractSceneTree(object))
-        const configGroups = configData?.groups || []
-        setMaterialMap(rebuildGroupMap(manager.extractMaterials(object), configGroups).groupMap)
+        const overrideConfigGroups = finalConfigData?.groups || []
+        setMaterialMap(rebuildGroupMap(manager.extractMaterials(object), overrideConfigGroups).groupMap)
         materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
       }
     } catch (err) {
@@ -546,10 +546,23 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         if (child instanceof Mesh) {
           const mArr = Array.isArray(child.material) ? child.material : [child.material]
           mArr.forEach(m => {
-            if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
-              // Ensure uniqueness if shared material
-              child.material = manager.isolateMaterialToObject(model, child, m.uuid)
-              targetMats.add(child.material)
+            const matchedGroupId = getGroupIdForMaterialName(m.name, isFallbackModeRef.current, state.configGroups || [])
+            if (matchedGroupId === groupId) {
+              const isolatedMat = manager.isolateMaterialToObject(model, child, m.uuid)
+              if (isolatedMat) {
+                if (Array.isArray(child.material)) {
+                  const idx = child.material.findIndex(mat => mat.uuid === m.uuid)
+                  if (idx !== -1) {
+                    const newArr = [...child.material]
+                    newArr[idx] = isolatedMat
+                    child.material = newArr
+                  }
+                } else {
+                  child.material = isolatedMat
+                }
+                
+                targetMats.add(isolatedMat as Material)
+              }
             }
           })
         }
@@ -603,7 +616,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         saveOverrides(currentFileNameRef.current, overrides)
       }
     },
-    [pushUndo]
+    [pushUndo, state.configGroups]
   )
 
   const applyTexture = useCallback(async (groupId: string, texSet: PBRTextureSet) => {
@@ -614,18 +627,37 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     pushUndo()
 
     const targetMats = new Set<Material>()
+    console.log('[DEBUG applyTexture] groupId:', groupId, 'configGroups:', state.configGroups)
+    
     model.traverse((child) => {
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
-            child.material = manager.isolateMaterialToObject(model, child, m.uuid)
-            targetMats.add(child.material)
-            manager.applyBoxUV(child)
+          const matchedGroupId = getGroupIdForMaterialName(m.name, isFallbackModeRef.current, state.configGroups || [])
+          if (matchedGroupId === groupId) {
+            console.log('[DEBUG applyTexture] Match found for mesh:', child.name, 'material:', m.name)
+            const isolatedMat = manager.isolateMaterialToObject(model, child, m.uuid)
+            if (isolatedMat) {
+              if (Array.isArray(child.material)) {
+                const idx = child.material.findIndex(mat => mat.uuid === m.uuid)
+                if (idx !== -1) {
+                  const newArr = [...child.material]
+                  newArr[idx] = isolatedMat
+                  child.material = newArr
+                }
+              } else {
+                child.material = isolatedMat
+              }
+              
+              targetMats.add(isolatedMat as Material)
+              manager.applyBoxUV(child)
+            }
           }
         })
       }
     })
+    
+    console.log('[DEBUG applyTexture] Target materials count:', targetMats.size)
 
     try {
       // 1. Pre-load texture images EXACTLY ONCE to avoid crashing the browser with thousands of HTTP requests
@@ -681,7 +713,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     } catch {
       setState((prev) => ({ ...prev, error: 'Failed to load texture.' }))
     }
-  }, [selectedNodeUuid, pushUndo])
+  }, [selectedNodeUuid, pushUndo, state.configGroups])
 
   /** Remove texture from a material and restore its color to white */
   const resetTexture = useCallback((groupId: string) => {
@@ -696,9 +728,23 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
-            child.material = manager.isolateMaterialToObject(model, child, m.uuid)
-            targetMats.add(child.material)
+          const matchedGroupId = getGroupIdForMaterialName(m.name, isFallbackModeRef.current, state.configGroups || [])
+          if (matchedGroupId === groupId) {
+            const isolatedMat = manager.isolateMaterialToObject(model, child, m.uuid)
+            if (isolatedMat) {
+              if (Array.isArray(child.material)) {
+                const idx = child.material.findIndex(mat => mat.uuid === m.uuid)
+                if (idx !== -1) {
+                  const newArr = [...child.material]
+                  newArr[idx] = isolatedMat
+                  child.material = newArr
+                }
+              } else {
+                child.material = isolatedMat
+              }
+              
+              targetMats.add(isolatedMat as Material)
+            }
           }
         })
       }
@@ -727,7 +773,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       }
       return next
     })
-  }, [pushUndo])
+  }, [pushUndo, state.configGroups])
 
   /** Restore the previous snapshot from the undo stack */
   const undoMaterial = useCallback(() => {
@@ -814,7 +860,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (m.uuid === id || getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === id) {
+          if (m.uuid === id || getGroupIdForMaterialName(m.name, isFallbackModeRef.current, state.configGroups || []) === id) {
             mNames.push(m.name)
           }
         })
@@ -828,10 +874,10 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     if (!(obj instanceof Mesh)) return null;
     const mArr = Array.isArray(obj.material) ? obj.material : [obj.material]
     if (mArr.length > 0) {
-      return getGroupIdForMaterialName(mArr[0].name, isFallbackModeRef.current)
+      return getGroupIdForMaterialName(mArr[0].name, isFallbackModeRef.current, state.configGroups || [])
     }
     return null;
-  }, [])
+  }, [state.configGroups])
 
   return {
     state,

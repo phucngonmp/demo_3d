@@ -37,8 +37,6 @@ export function Viewer() {
     resetCamera,
     clearModel,
     dismissError,
-    selectNode,
-    selectMaterial,
     updateMaterial,
     applyTexture,
     resetTexture,
@@ -52,13 +50,13 @@ export function Viewer() {
 
   useEffect(() => {
     if (activeMaterialUuid) {
-      selectMaterial(activeMaterialUuid)
+      // selectMaterial(activeMaterialUuid)
       focusCameraOnGroup(activeMaterialUuid)
     } else {
-      selectNode(selectedNodeUuid)
+      // selectNode(selectedNodeUuid)
       focusCameraOnGroup(null)
     }
-  }, [activeMaterialUuid, selectMaterial, selectNode, selectedNodeUuid, focusCameraOnGroup])
+  }, [activeMaterialUuid, focusCameraOnGroup])
 
   const handleDragStateChange = useCallback((dragging: boolean) => {
     setIsDragOver(dragging)
@@ -197,11 +195,7 @@ export function Viewer() {
 
           <div className={styles.tabContent}>
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                {activeMaterialUuid && (
-                  <div style={{ padding: 10, background: '#3b82f6', color: 'white', textAlign: 'center', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setActiveMaterialUuid(null)}>
-                    🔙 Quay Lại Toàn Cảnh
-                  </div>
-                )}
+
                 <div style={{ flex: activeMaterialUuid ? '0 0 30%' : 1, minHeight: 0, overflowY: 'auto' }}>
                   <MaterialListPanel
                     materials={materialMap}

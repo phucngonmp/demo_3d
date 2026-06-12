@@ -25,6 +25,10 @@ jobs:
         run: |
           npm ci
           npm run build
+          cp dist/index.html dist/404.html
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Auto Deploy to GitHub Pages 🚀
         uses: JamesIves/github-pages-deploy-action@v4
