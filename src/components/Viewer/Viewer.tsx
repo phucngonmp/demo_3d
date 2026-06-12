@@ -1,0 +1,273 @@
+import { useRef, useState, useCallback, useEffect } from 'react'
+import { Viewport } from '../Viewport/Viewport'
+import { Toolbar } from '../Toolbar/Toolbar'
+import { DropZone } from '../DropZone/DropZone'
+import { MaterialPanel } from '../MaterialPanel/MaterialPanel'
+import { MaterialListPanel } from '../MaterialPanel/MaterialListPanel'
+import { useModelViewer } from '../../hooks/useModelViewer'
+import styles from './Viewer.module.css'
+
+const RIGHT_MIN_WIDTH = 220
+const RIGHT_MAX_WIDTH = 520
+const RESIZING_CLASS = 'is-resizing-sidebars'
+const COMMIT_RESIZE_EVENT = 'glb-viewer:commit-resize'
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+export function Viewer() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [activeMaterialUuid, setActiveMaterialUuid] = useState<string | null>(null)
+  const pointerDownPos = useRef({ x: 0, y: 0 })
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(300)
+  const rightSidebarWidthRef = useRef(rightSidebarWidth)
+  const resizeFrameRef = useRef<number | null>(null)
+
+  const {
+    state,
+    materialMap,
+    selectedNodeUuid,
+    autosave,
+    undoStack,
+    loadFile,
+    focusCameraOnGroup,
+    toggleWireframe,
+    resetCamera,
+    clearModel,
+    dismissError,
+    selectNode,
+    selectMaterial,
+    updateMaterial,
+    applyTexture,
+    resetTexture,
+    undoMaterial,
+    pushUndo,
+    toggleAutosave,
+    changeExposure,
+    toggleCameraMode,
+    changeEnvMode,
+  } = useModelViewer(containerRef)
+
+  useEffect(() => {
+    if (activeMaterialUuid) {
+      selectMaterial(activeMaterialUuid)
+      focusCameraOnGroup(activeMaterialUuid)
+    } else {
+      selectNode(selectedNodeUuid)
+      focusCameraOnGroup(null)
+    }
+  }, [activeMaterialUuid, selectMaterial, selectNode, selectedNodeUuid, focusCameraOnGroup])
+
+  const handleDragStateChange = useCallback((dragging: boolean) => {
+    setIsDragOver(dragging)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current)
+      }
+      document.body.classList.remove(RESIZING_CLASS)
+    }
+  }, [])
+
+  const scheduleResizeFrame = useCallback(() => {
+    if (resizeFrameRef.current !== null) return
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      setRightSidebarWidth(rightSidebarWidthRef.current)
+      resizeFrameRef.current = null
+    })
+  }, [])
+
+  const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const startX = event.clientX
+    const initialRightWidth = rightSidebarWidthRef.current
+
+    event.currentTarget.setPointerCapture(event.pointerId)
+    document.body.classList.add(RESIZING_CLASS)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX
+      rightSidebarWidthRef.current = clamp(initialRightWidth - delta, RIGHT_MIN_WIDTH, RIGHT_MAX_WIDTH)
+      scheduleResizeFrame()
+    }
+
+    const handlePointerUp = () => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current)
+        resizeFrameRef.current = null
+      }
+      setRightSidebarWidth(rightSidebarWidthRef.current)
+      document.body.classList.remove(RESIZING_CLASS)
+      window.dispatchEvent(new Event(COMMIT_RESIZE_EVENT))
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+  }, [scheduleResizeFrame])
+
+  return (
+    <div className={styles.app}>
+      <Toolbar
+        wireframe={state.wireframe}
+        hasModel={state.hasModel}
+        autosave={autosave}
+        exposure={state.exposure}
+        cameraMode={state.cameraMode}
+        onOpenFile={loadFile}
+        onToggleWireframe={toggleWireframe}
+        onResetCamera={resetCamera}
+        onClearModel={clearModel}
+        onToggleAutosave={toggleAutosave}
+        onChangeExposure={changeExposure}
+        onToggleCameraMode={toggleCameraMode}
+        envMode={state.envMode}
+        onChangeEnvMode={changeEnvMode}
+      />
+
+      <div className={styles.workArea}>
+        <div 
+          className={styles.viewportWrapper}
+          onPointerDown={(e) => { pointerDownPos.current = { x: e.clientX, y: e.clientY } }}
+          onPointerUp={(e) => {
+            const dx = e.clientX - pointerDownPos.current.x
+            const dy = e.clientY - pointerDownPos.current.y
+            if (Math.hypot(dx, dy) < 5 && e.button === 0) {
+              setActiveMaterialUuid(null)
+            }
+          }}
+        >
+          <Viewport containerRef={containerRef} isDragOver={isDragOver} />
+
+          {!state.hasModel && !state.isLoading && (
+            <div className={styles.emptyHint}>
+              <div className={styles.emptyIcon}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+              </div>
+              <h2 className={styles.emptyTitle}>3D Model Viewer</h2>
+              <p className={styles.emptySubtitle}>
+                Drag &amp; drop a <code>.glb</code> file or click{' '}
+                <strong>Open File</strong> in the toolbar
+              </p>
+              <div className={styles.controls}>
+                <span>🖱 Orbit: Left drag</span>
+                <span>⟳ Zoom: Scroll</span>
+                <span>✥ Pan: Right drag</span>
+              </div>
+            </div>
+          )}
+
+          {state.isLoading && (
+            <div className={styles.loadingOverlay}>
+              <div className={styles.loadingSpinner} />
+              <p>Loading model…</p>
+            </div>
+          )}
+        </div>
+
+        <div
+          className={`${styles.resizeHandle} ${styles.rightResizeHandle}`}
+          onPointerDown={(event) => startResize(event)}
+          role="separator"
+          aria-label="Resize right sidebar"
+          aria-orientation="vertical"
+        />
+        <div
+          className={styles.rightSidebar}
+          style={{ width: `${rightSidebarWidth}px` }}
+        >
+          <div className={styles.tabBar}>
+            <div className={`${styles.tab} ${styles.tabActive}`} style={{ pointerEvents: 'none' }}>
+              Materials
+              {materialMap.size > 0 && (
+                <span className={styles.tabBadge}>{materialMap.size}</span>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.tabContent}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {activeMaterialUuid && (
+                  <div style={{ padding: 10, background: '#3b82f6', color: 'white', textAlign: 'center', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setActiveMaterialUuid(null)}>
+                    🔙 Quay Lại Toàn Cảnh
+                  </div>
+                )}
+                <div style={{ flex: activeMaterialUuid ? '0 0 30%' : 1, minHeight: 0, overflowY: 'auto' }}>
+                  <MaterialListPanel
+                    materials={materialMap}
+                    activeMaterialUuid={activeMaterialUuid}
+                    onSelect={(uuid) => setActiveMaterialUuid(prev => prev === uuid ? null : uuid)}
+                  />
+                </div>
+                {activeMaterialUuid && materialMap.has(activeMaterialUuid) && (
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', borderTop: '2px solid var(--border-color)' }}>
+                    <MaterialPanel
+                      material={materialMap.get(activeMaterialUuid)!}
+                      canUndo={undoStack.length > 0}
+                      activeGroupId={activeMaterialUuid}
+                      onUpdateMaterial={updateMaterial}
+                      onApplyTextureSet={applyTexture}
+                      onResetTexture={resetTexture}
+                      onUndo={undoMaterial}
+                      onPushUndo={pushUndo}
+                    />
+                  </div>
+                )}
+              </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.statusBar} style={{ display: 'none' }}>
+        <span className={styles.statusItem}>
+          <span className={`${styles.dot} ${state.hasModel ? styles.dotGreen : styles.dotGray}`} />
+          {state.hasModel ? state.modelInfo?.fileName : 'No model'}
+        </span>
+        {state.hasModel && (
+          <>
+            <span className={styles.statusSep}>·</span>
+            <span className={styles.statusItem}>
+              {state.modelInfo?.triangleCount.toLocaleString()} triangles
+            </span>
+            {selectedNodeUuid && (
+              <>
+                <span className={styles.statusSep}>·</span>
+                <span className={styles.statusItem} style={{ color: 'var(--accent)' }}>
+                  1 object selected
+                </span>
+              </>
+            )}
+          </>
+        )}
+        <span className={styles.statusSpacer} />
+        <span className={styles.statusItem} style={{ color: 'var(--text-muted)' }}>
+          Three.js GLB Viewer
+        </span>
+      </div>
+
+      <DropZone onDrop={loadFile} onDragStateChange={handleDragStateChange} />
+
+      {state.error && (
+        <div className={styles.errorToast} role="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{state.error}</span>
+          <button id="btn-dismiss-error" onClick={dismissError} className={styles.dismissBtn}>✕</button>
+        </div>
+      )}
+    </div>
+  )
+}

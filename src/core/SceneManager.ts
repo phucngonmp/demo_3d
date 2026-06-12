@@ -1,3 +1,4 @@
+import * as TWEEN from '@tweenjs/tween.js'
 import {
   WebGLRenderer,
   Scene,
@@ -191,9 +192,10 @@ export class SceneManager {
 
 
   startLoop(onFrame?: () => void): void {
-    const animate = () => {
+    const animate = (time?: number) => {
       this.animationId = requestAnimationFrame(animate)
       onFrame?.()
+      TWEEN.update(time)
       this.renderer.render(this.scene, this.camera)
     }
     animate()

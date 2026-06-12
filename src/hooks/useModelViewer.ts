@@ -10,6 +10,8 @@ import { SceneManager } from '../core/SceneManager'
 import { ModelLoader } from '../core/ModelLoader'
 import { CameraController } from '../core/CameraController'
 import { MaterialManager } from '../core/MaterialManager'
+import { calculateFileHash } from '../utils/hash'
+import { supabase } from '../core/supabaseClient'
 import {
   saveFile, loadStoredFile, clearStoredFile,
   saveOverrides, loadOverrides, clearOverrides,
@@ -18,44 +20,46 @@ import {
 import { useTheme } from '../context/useTheme'
 import type { ViewerState, SceneNode, MaterialData, PBRTextureSet, EnvMode } from '../core/types'
 import defaultModelUrl from '../assets/glb/basic_kitchen.glb?url'
-import { B2C_CATEGORIES } from '../config/materialConfig'
-
 const getBaseName = (name: string) => name.replace(/\.\d+$/, '')
 
-const getGroupIdForMaterialName = (matName: string, isFallback: boolean): string | null => {
+const getGroupIdForMaterialName = (matName: string, isFallback: boolean, configGroups: any[] = []): string | null => {
   if (isFallback) return getBaseName(matName)
 
   const matNameLower = matName.toLowerCase()
-  for (const cat of B2C_CATEGORIES) {
-    if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
+  for (const cat of configGroups) {
+    if (cat.keywords.some((kw: string) => matNameLower.includes(kw.toLowerCase()))) {
       return cat.id
     }
   }
   return null
 }
 
-const rebuildGroupMap = (matMap: Map<string, MaterialData>) => {
+const rebuildGroupMap = (matMap: Map<string, MaterialData>, configGroups: any[] = []) => {
   const groupMap = new Map<string, MaterialData>()
-  for (const m of Array.from(matMap.values())) {
-    const matNameLower = m.name.toLowerCase()
-
-    let matchedCat = null
-    for (const cat of B2C_CATEGORIES) {
-      if (cat.keywords.some(kw => matNameLower.includes(kw.toLowerCase()))) {
-        matchedCat = cat
-        break
+  
+  // Nếu có config từ Database, thì ưu tiên nhóm theo Database
+  if (configGroups && configGroups.length > 0) {
+    for (const m of Array.from(matMap.values())) {
+      const matNameLower = m.name.toLowerCase()
+      let matchedCat = null
+      
+      for (const cat of configGroups) {
+        if (cat.keywords && cat.keywords.some((kw: string) => matNameLower.includes(kw.toLowerCase()))) {
+          matchedCat = cat
+          break
+        }
       }
-    }
 
-    if (matchedCat && !groupMap.has(matchedCat.id)) {
-      groupMap.set(matchedCat.id, {
-        ...m,
-        uuid: matchedCat.id,
-        name: matchedCat.displayName,
-        displayName: matchedCat.displayName,
-        color: matchedCat.color,
-        type: 'Group'
-      })
+      if (matchedCat && !groupMap.has(matchedCat.id)) {
+        groupMap.set(matchedCat.id, {
+          ...m, 
+          uuid: matchedCat.id,
+          name: matchedCat.name, 
+          displayName: matchedCat.name,
+          color: '#ffffff', // Mặc định vì DB ko lưu màu badge
+          type: 'Group'
+        })
+      }
     }
   }
 
@@ -193,7 +197,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   }, [isReady])
 
   // ── Core Load Model Function ──────────────────────────────────────
-  const loadModel = useCallback(async (source: File | { url: string; name: string }) => {
+  const loadModel = useCallback(async (source: File | { url: string; name: string }, configData?: any) => {
     const loader = loaderRef.current
     const scene = sceneRef.current
     const controller = controllerRef.current
@@ -212,7 +216,25 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
 
+    let finalConfigData = configData;
+    let fileHashStr = '';
+
     try {
+      if (isFile) {
+        fileHashStr = await calculateFileHash(source as File);
+      } else {
+        const response = await fetch((source as any).url);
+        const blob = await response.blob();
+        fileHashStr = await calculateFileHash(new File([blob], (source as any).name));
+      }
+
+      if (!finalConfigData) {
+        const { data } = await supabase.from('model_configs').select('config_data').eq('file_hash', fileHashStr).single();
+        if (data) {
+          finalConfigData = data.config_data;
+        }
+      }
+
       // Remove previous model
       if (currentModelRef.current) {
         scene.scene.remove(currentModelRef.current)
@@ -230,7 +252,11 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const initialBox = new Box3().setFromObject(object)
       scene.fitShadowToBox(initialBox)
 
-      // Ensure controller mode is in sync with the UI state before fitting
+      if (fileHashStr) {
+        info.fileHash = fileHashStr;
+      }
+
+      currentFileNameRef.current = name
       controller.setMode(state.cameraMode, object, scene.camera)
 
       // Build scene tree + material data
@@ -238,10 +264,15 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       const matMap = manager.extractMaterials(object)
       const meshInventory = manager.getMeshInventory(object)
 
-      console.log("%c🔥 ALL MATERIAL NAMES IN THIS MODEL:", "color: #00ff00; font-size: 14px; font-weight: bold;")
+      // Broadcast raw materials for ConfigPage to consume
+      window.dispatchEvent(new CustomEvent('glb-config:rawMaterials', {
+        detail: Array.from(matMap.values())
+      }))
+
       console.log(Array.from(matMap.values()).map(m => m.name).filter((v, i, a) => a.indexOf(v) === i))
 
-      const { groupMap, isFallback } = rebuildGroupMap(matMap)
+      const configGroups = finalConfigData?.groups || []
+      const { groupMap, isFallback } = rebuildGroupMap(matMap, configGroups)
       isFallbackModeRef.current = isFallback
 
       objectMapRef.current = manager.buildObjectMap(object)
@@ -312,7 +343,8 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
         // Rebuild UI state to reflect restored overrides
         setSceneNodes(manager.extractSceneTree(object))
-        setMaterialMap(rebuildGroupMap(manager.extractMaterials(object)).groupMap)
+        const configGroups = configData?.groups || []
+        setMaterialMap(rebuildGroupMap(manager.extractMaterials(object), configGroups).groupMap)
         materialObjectMapRef.current = manager.buildMaterialObjectMap(object)
       }
     } catch (err) {
@@ -402,9 +434,71 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
   }, [])
 
   // ── Scene Panel actions ───────────────────────────────────────────
+  const focusCameraOnGroup = useCallback((uuid: string | null) => {
+    const scene = sceneRef.current
+    const controller = controllerRef.current
+    const model = currentModelRef.current
+    if (!scene || !controller || !model) return
+
+    if (!uuid) {
+      controller.reset() // Quay lại toàn cảnh nếu bỏ chọn
+      return
+    }
+
+    const box = new Box3()
+    let hasContent = false
+
+    // Tìm tất cả mesh thuộc vật liệu (hoặc Group vật liệu) có id này
+    model.traverse((child) => {
+      if (child instanceof Mesh && child.material) {
+        let isMatch = false
+        if (Array.isArray(child.material)) {
+          isMatch = child.material.some((m) => m.uuid === uuid || (m.userData && m.userData.groupId === uuid))
+        } else {
+          isMatch = child.material.uuid === uuid || (child.material.userData && child.material.userData.groupId === uuid)
+        }
+
+        if (!isMatch) {
+          // Bổ sung: Nếu uuid truyền vào là id của Group cấu hình (Ví dụ "tubep")
+          // ta có thể check logic trong `groupMap`. 
+          // Cách nhanh nhất là xem tên material gốc có match với uuid này thông qua cấu hình không.
+          const matName = Array.isArray(child.material) ? child.material[0].name : child.material.name
+          const baseName = getBaseName(matName)
+          if (baseName === uuid || matName === uuid) isMatch = true
+          
+          // Kiểm tra xem Mesh có userData.groupId trùng khớp không (khi rebuildGroupMap gán vào)
+          if (child.userData && child.userData.groupId === uuid) isMatch = true;
+        }
+
+        if (isMatch) {
+          child.updateMatrixWorld()
+          box.expandByObject(child)
+          hasContent = true
+        }
+      }
+    })
+
+    if (hasContent) {
+      controller.focusOnBoundingBox(box, 1000)
+    }
+  }, [])
+
   const selectNode = useCallback((uuid: string | null) => {
     setSelectedNodeUuid(uuid)
     sceneRef.current?.setSelectedObject(uuid ? objectMapRef.current.get(uuid) ?? null : null)
+  }, [])
+
+  const pickMaterialAt = useCallback((clientX: number, clientY: number): string | null => {
+    const scene = sceneRef.current
+    const model = currentModelRef.current
+    if (!scene || !model) return null
+
+    const hitObject = scene.pickObjectAt(clientX, clientY, model)
+    if (hitObject instanceof Mesh && hitObject.material) {
+      const mat = Array.isArray(hitObject.material) ? hitObject.material[0] : hitObject.material
+      return mat.uuid
+    }
+    return null
   }, [])
 
 
@@ -709,9 +803,9 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
     sceneRef.current?.setBackgroundImage(url)
   }, [])
 
-  const selectMaterial = useCallback((groupId: string | null) => {
-    if (!groupId) {
-      // sceneRef.current?.setSelectedMaterial(null)
+  const selectMaterial = useCallback((id: string | null) => {
+    if (!id) {
+      sceneRef.current?.clearSelection()
       return
     }
     const mNames: string[] = []
@@ -719,14 +813,13 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
       if (child instanceof Mesh) {
         const mArr = Array.isArray(child.material) ? child.material : [child.material]
         mArr.forEach(m => {
-          if (getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === groupId) {
+          if (m.uuid === id || getGroupIdForMaterialName(m.name, isFallbackModeRef.current) === id) {
             mNames.push(m.name)
           }
         })
       }
     })
-    // Disable highlighting selected group as requested by user
-    // sceneRef.current?.setSelectedMaterialsByName(mNames)
+    sceneRef.current?.setSelectedMaterialsByName(mNames)
   }, [])
 
   const getGroupIdForNode = useCallback((nodeUuid: string): string | null => {
@@ -741,18 +834,20 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
 
   return {
     state,
-    sceneNodes,
     materialMap,
     selectedNodeUuid,
     autosave,
     undoStack,
     loadFile,
+    loadModel,
+    focusCameraOnGroup,
     toggleWireframe,
     resetCamera,
     clearModel,
     dismissError,
     selectNode,
     selectMaterial,
+    pickMaterialAt,
     toggleObjectVisibility,
     pushUndo,
     updateMaterial,

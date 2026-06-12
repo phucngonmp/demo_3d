@@ -1,5 +1,4 @@
 import type { MaterialData, PBRTextureSet } from '../../core/types'
-import { B2C_CATEGORIES } from '../../config/materialConfig'
 import { useMemo } from 'react'
 import styles from './MaterialEditor.module.css'
 
@@ -76,15 +75,6 @@ interface MaterialEditorProps {
 
 export function MaterialEditor({ mat, activeGroupId, onUpdate, onApplyTextureSet, onResetTexture, onPushUndo }: MaterialEditorProps) {
   const availableTextures = useMemo(() => {
-    if (!activeGroupId) return ALL_TEXTURE_SETS
-    const catConfig = B2C_CATEGORIES.find(c => c.id === activeGroupId)
-    if (!catConfig) {
-      // isFallbackMode
-      return ALL_TEXTURE_SETS
-    }
-    if (catConfig.folderName) {
-      return ALL_TEXTURE_SETS.filter(t => t.category === catConfig.folderName)
-    }
     return ALL_TEXTURE_SETS
   }, [activeGroupId])
   return (

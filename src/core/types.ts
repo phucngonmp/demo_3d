@@ -13,6 +13,7 @@ export interface ModelInfo {
     y: number
     z: number
   }
+  fileHash?: string
 }
 
 export interface LoadResult {
