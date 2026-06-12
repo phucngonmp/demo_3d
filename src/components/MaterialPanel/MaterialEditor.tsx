@@ -1,55 +1,8 @@
-import type { MaterialData, PBRTextureSet } from '../../core/types'
+import type { MaterialData, PBRTextureSet, GroupConfig } from '../../core/types'
 import { useMemo } from 'react'
 import styles from './MaterialEditor.module.css'
 
-// Scan all textures in the assets folder at build time
-const textureFiles = import.meta.glob('../../assets/textures/**/*.{jpg,JPG,jpeg,JPEG,png,PNG,webp,WEBP,avif}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
-
-const textureSetsRecord: Record<string, PBRTextureSet> = {}
-Object.entries(textureFiles).forEach(([path, url]) => {
-  const parts = path.split('/')
-  const idxTextures = parts.indexOf('textures')
-  
-  if (idxTextures !== -1 && idxTextures + 1 < parts.length) {
-    const filename = parts[parts.length - 1]
-    const category = parts[idxTextures + 1]
-    let id = ''
-    let isSingleFile = false
-    
-    if (parts.length - 1 > idxTextures + 2) {
-      // It's inside a sub-folder (e.g. textures/wall/wood_01/wood_diff.jpg)
-      id = parts[parts.length - 2]
-    } else {
-      // Direct file under category (e.g. textures/wall/wood.jpg)
-      id = filename.substring(0, filename.lastIndexOf('.')) || filename
-      isSingleFile = true
-    }
-    
-    const uniqueKey = `${category}/${id}`
-    
-    if (!textureSetsRecord[uniqueKey]) {
-      textureSetsRecord[uniqueKey] = { id: uniqueKey, category, diffuse: '' }
-    }
-    
-    const lower = filename.toLowerCase()
-    if (isSingleFile || lower.includes('diff') || lower.includes('color') || lower.includes('albedo') || lower.includes('_col')) {
-      textureSetsRecord[uniqueKey].diffuse = url
-    } else if (lower.includes('nor') || lower.includes('nrm')) {
-      textureSetsRecord[uniqueKey].normal = url
-    } else if (lower.includes('rough')) {
-      textureSetsRecord[uniqueKey].roughness = url
-    } else if (lower.includes('ao') || lower.includes('ambient')) {
-      textureSetsRecord[uniqueKey].ao = url
-    }
-  }
-})
-
-const ALL_TEXTURE_SETS = Object.values(textureSetsRecord).filter(t => t.diffuse)
-console.log('--- DEBUG TEXTURE SETS ---', {
-  totalGlobFiles: Object.keys(textureFiles).length,
-  textureSetsRecord,
-  ALL_TEXTURE_SETS
-})
+import { ALL_TEXTURE_SETS } from '../../utils/textureScanner'
 
 const KITCHEN_COLORS = [
   { name: 'Pure White', hex: '#FFFFFF' },
@@ -71,12 +24,18 @@ interface MaterialEditorProps {
   onApplyTextureSet: (tex: PBRTextureSet) => void
   onResetTexture: () => void
   onPushUndo: () => void
+  configGroups?: GroupConfig[]
 }
 
-export function MaterialEditor({ mat, activeGroupId, onUpdate, onApplyTextureSet, onResetTexture, onPushUndo }: MaterialEditorProps) {
+export function MaterialEditor({ mat, activeGroupId, onUpdate, onApplyTextureSet, onResetTexture, onPushUndo, configGroups }: MaterialEditorProps) {
   const availableTextures = useMemo(() => {
-    return ALL_TEXTURE_SETS
-  }, [activeGroupId])
+    if (!activeGroupId || !configGroups) return ALL_TEXTURE_SETS
+    const group = configGroups.find(g => g.id === activeGroupId)
+    if (!group || !group.textureCategories || group.textureCategories.length === 0) {
+      return ALL_TEXTURE_SETS
+    }
+    return ALL_TEXTURE_SETS.filter(t => group.textureCategories!.includes(t.category))
+  }, [activeGroupId, configGroups])
   return (
     <div className={styles.editor}>
       {/* ─── Base Color (Preset Swatches) ─── */}

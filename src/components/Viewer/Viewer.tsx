@@ -220,6 +220,7 @@ export function Viewer() {
                       onResetTexture={resetTexture}
                       onUndo={undoMaterial}
                       onPushUndo={pushUndo}
+                      configGroups={state.configGroups}
                     />
                   </div>
                 )}

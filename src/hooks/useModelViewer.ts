@@ -304,6 +304,7 @@ export function useModelViewer(containerRef: React.RefObject<HTMLDivElement | nu
         hasModel: true,
         modelInfo: info,
         wireframe: prev.wireframe,
+        configGroups: configGroups,
       }))
 
       // Reapply wireframe if it was on

@@ -21,6 +21,14 @@ export interface LoadResult {
   info: ModelInfo
 }
 
+export interface GroupConfig {
+  id: string
+  name: string
+  keywords: string[]
+  materialUuids: string[]
+  textureCategories?: string[]
+}
+
 export interface ViewerState {
   isLoading: boolean
   hasModel: boolean
@@ -31,6 +39,7 @@ export interface ViewerState {
   exposure: number
   cameraMode: 'orbit' | 'interior'
   envMode: EnvMode
+  configGroups?: GroupConfig[]
 }
 
 export type EnvMode = 'room' | 'neutral' | 'sunset' | 'city'

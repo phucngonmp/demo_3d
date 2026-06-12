@@ -1,4 +1,4 @@
-import type { MaterialData, PBRTextureSet } from '../../core/types'
+import type { MaterialData, PBRTextureSet, GroupConfig } from '../../core/types'
 import { MaterialEditor } from './MaterialEditor'
 import styles from './MaterialPanel.module.css'
 
@@ -11,6 +11,7 @@ interface MaterialPanelProps {
   onResetTexture: (matUuid: string) => void
   onUndo: () => void
   onPushUndo: () => void
+  configGroups?: GroupConfig[]
 }
 
 export function MaterialPanel({
@@ -22,6 +23,7 @@ export function MaterialPanel({
   onResetTexture,
   onUndo,
   onPushUndo,
+  configGroups,
 }: MaterialPanelProps) {
   if (!material) return null
 
@@ -51,6 +53,7 @@ export function MaterialPanel({
           onApplyTextureSet={(texSet) => onApplyTextureSet(material.uuid, texSet)}
           onResetTexture={() => onResetTexture(material.uuid)}
           onPushUndo={onPushUndo}
+          configGroups={configGroups}
         />
       </div>
     </div>

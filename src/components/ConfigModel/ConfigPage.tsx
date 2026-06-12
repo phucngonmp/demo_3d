@@ -4,16 +4,10 @@ import { DropZone } from '../DropZone/DropZone'
 import { useModelViewer } from '../../hooks/useModelViewer'
 import { calculateFileHash } from '../../utils/hash'
 import { supabase } from '../../core/supabaseClient'
-import type { MaterialData } from '../../core/types'
+import type { MaterialData, GroupConfig } from '../../core/types'
 import styles from './ConfigPage.module.css'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-type GroupConfig = {
-  id: string
-  name: string
-  keywords: string[]
-  materialUuids: string[] // uuids of materials manually assigned
-}
+import { ALL_CATEGORIES, TEXTURES_BY_CATEGORY } from '../../utils/textureScanner'
 
 // ── ConfigPage ───────────────────────────────────────────────────────────────
 export function ConfigPage() {
@@ -31,6 +25,7 @@ export function ConfigPage() {
   const [rawMaterials, setRawMaterials] = useState<MaterialData[]>([])
   const [newGroupName, setNewGroupName] = useState('')
   const [isAddingGroup, setIsAddingGroup] = useState(false)
+  const [configuringTextureGroupId, setConfiguringTextureGroupId] = useState<string | null>(null)
 
   // Re-use the viewer hook for Three.js + loadFile + loadModel + camera
   const {
@@ -75,6 +70,7 @@ export function ConfigPage() {
           name: g.name,
           keywords: g.keywords || [],
           materialUuids: g.materialUuids || [],
+          textureCategories: g.textureCategories || [],
         })))
       } else {
         setGroups([])
@@ -93,7 +89,14 @@ export function ConfigPage() {
       return
     }
     setSaving(true)
-    const configData = { groups: updatedGroups.map(g => ({ id: g.id, name: g.name, keywords: g.keywords })) }
+    const configData = { 
+      groups: updatedGroups.map(g => ({ 
+        id: g.id, 
+        name: g.name, 
+        keywords: g.keywords, 
+        textureCategories: g.textureCategories 
+      })) 
+    }
     console.log('[saveToDb] Sending to Supabase:', { fileHash, configData })
     const { error, data } = await supabase
       .from('model_configs')
@@ -138,7 +141,7 @@ export function ConfigPage() {
       return
     }
     const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '')
-    const newGroup = { id, name, keywords: [], materialUuids: [] }
+    const newGroup: GroupConfig = { id, name, keywords: [], materialUuids: [], textureCategories: [] }
     const updated = [...groups, newGroup]
     setGroups(updated)
     setNewGroupName('')
@@ -168,6 +171,19 @@ export function ConfigPage() {
         ? { ...g, keywords: [...g.keywords, kw] }
         : g
     )
+    setGroups(updated)
+    saveToDb(updated)
+  }
+
+  const toggleCategory = (gId: string, category: string) => {
+    const updated = groups.map(g => {
+      if (g.id !== gId) return g
+      const cats = g.textureCategories || []
+      const newCats = cats.includes(category) 
+        ? cats.filter(c => c !== category)
+        : [...cats, category]
+      return { ...g, textureCategories: newCats }
+    })
     setGroups(updated)
     saveToDb(updated)
   }
@@ -370,8 +386,76 @@ export function ConfigPage() {
                   {/* Manual keyword input */}
                   <AddKeywordInput onAdd={(kw) => addKeyword(g.id, kw)} />
                 </div>
+
+                {/* Texture Categories */}
+                <div className={styles.categorySection} style={{ marginTop: 12, padding: 12, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                  <label className={styles.kwLabel} style={{ marginBottom: 8, display: 'block' }}>Thư mục Texture được phép:</label>
+                  <button 
+                    onClick={() => setConfiguringTextureGroupId(g.id)}
+                    style={{ background: '#3b82f6', color: 'white', padding: '6px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    🎨 Chọn thư mục Texture ({(g.textureCategories || []).length} mục)
+                  </button>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
+                    * Nếu không chọn mục nào, mặc định sẽ hiển thị TOÀN BỘ texture.
+                  </p>
+                </div>
               </div>
             ))
+          )}
+
+          {/* Texture Folder Selector Modal */}
+          {configuringTextureGroupId && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#fff', padding: 20, borderRadius: 8, width: 600, maxWidth: '90vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                <h2 style={{ marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: 10 }}>
+                  Cấu hình Thư mục Texture
+                </h2>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: 10 }}>
+                  {ALL_CATEGORIES.map(cat => {
+                    const group = groups.find(g => g.id === configuringTextureGroupId)
+                    const isChecked = (group?.textureCategories || []).includes(cat)
+                    const textures = TEXTURES_BY_CATEGORY[cat] || []
+                    return (
+                      <div key={cat} style={{ marginBottom: 15, padding: 10, border: '1px solid #e2e8f0', borderRadius: 6, background: isChecked ? '#f0f9ff' : '#fff' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 'bold', fontSize: 15, cursor: 'pointer', marginBottom: 8 }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => toggleCategory(configuringTextureGroupId, cat)}
+                            style={{ transform: 'scale(1.2)' }}
+                          />
+                          Thư mục: {cat} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: 13 }}>({textures.length} ảnh)</span>
+                        </label>
+                        
+                        {/* Texture Preview Swatches */}
+                        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8 }}>
+                          {textures.map(tex => (
+                            <div 
+                              key={tex.id} 
+                              style={{ 
+                                width: 40, height: 40, flexShrink: 0, borderRadius: 4, 
+                                backgroundImage: `url(${tex.diffuse})`, backgroundSize: 'cover', backgroundPosition: 'center',
+                                border: '1px solid #cbd5e1'
+                              }}
+                              title={tex.id}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ marginTop: 15, textAlign: 'right', borderTop: '1px solid #eee', paddingTop: 15 }}>
+                  <button 
+                    onClick={() => setConfiguringTextureGroupId(null)}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Đóng / Lưu cấu hình
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
